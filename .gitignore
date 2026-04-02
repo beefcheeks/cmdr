@@ -1,0 +1,22 @@
+# Binaries
+cmdr
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build
+/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Test
+*.test
+coverage.out
