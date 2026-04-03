@@ -43,33 +43,42 @@
 	to { opacity: 0; }
 }
 
+/* Difft syntax-aware diff colors */
+.diff-add { color: #4ade80; }
+.diff-del { color: #f87171; }
+.diff-file { color: #facc15; }
+.diff-info { color: #60a5fa; }
+.diff-meta { color: #c084fc; }
+.diff-hunk { color: #22d3ee; }
+.diff-dim { opacity: 0.5; }
+
 /* Component classes — reusable design system patterns */
 @layer components {
 	.btn-chiclet {
-		@apply shrink-0 w-10 h-10 flex items-center justify-center
-			rounded-lg border-t
+		@apply shrink-0 w-8 h-8 flex items-center justify-center
+			rounded-md border-t
 			bg-cmd-500 text-cmd-300 border-t-cmd-400/50
-			shadow-[0_3px_0_0_var(--color-cmd-700)]
+			shadow-[0_2px_0_0_var(--color-cmd-700)]
 			hover:brightness-110
 			active:translate-y-0.5 active:shadow-none
 			transition-all cursor-pointer;
 	}
 
 	.btn-chiclet-danger {
-		@apply shrink-0 w-10 h-10 flex items-center justify-center
-			rounded-lg border-t
+		@apply shrink-0 w-8 h-8 flex items-center justify-center
+			rounded-md border-t
 			bg-red-900 text-red-300 border-t-red-700/50
-			shadow-[0_3px_0_0_var(--color-red-950)]
+			shadow-[0_2px_0_0_var(--color-red-950)]
 			hover:brightness-110
 			active:translate-y-0.5 active:shadow-none
 			transition-all cursor-pointer;
 	}
 
 	.btn-chiclet-alt {
-		@apply shrink-0 w-10 h-10 flex items-center justify-center
-			rounded-lg border-t
+		@apply shrink-0 w-8 h-8 flex items-center justify-center
+			rounded-md border-t
 			bg-run-500 text-run-700 border-t-run-400/50
-			shadow-[0_3px_0_0_var(--color-run-700)]
+			shadow-[0_2px_0_0_var(--color-run-700)]
 			hover:brightness-110
 			active:translate-y-0.5 active:shadow-none
 			transition-all cursor-pointer;

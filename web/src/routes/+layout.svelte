@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/stores';
-	import { LayoutDashboard, ListChecks } from 'lucide-svelte';
+	import { LayoutDashboard, ListChecks, Settings } from 'lucide-svelte';
 	import { onDestroy } from 'svelte';
 	import { events } from '$lib/events';
 	import type { DaemonStatus } from '$lib/api';
@@ -11,7 +11,8 @@
 
 	const nav = [
 		{ href: '/', label: 'Dashboard', icon: LayoutDashboard },
-		{ href: '/tasks', label: 'Tasks', icon: ListChecks }
+		{ href: '/tasks', label: 'Tasks', icon: ListChecks },
+		{ href: '/settings', label: 'Settings', icon: Settings }
 	];
 
 	const unsub = events.on('status', (data) => {
@@ -57,7 +58,7 @@
 			</ul>
 		</nav>
 
-		<main class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-8">
+		<main>
 			{@render children()}
 		</main>
 	</div>

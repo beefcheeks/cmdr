@@ -100,6 +100,10 @@ class EventClient {
 
 		if (!this.source) {
 			this.connect();
+		} else if (this.source.readyState === EventSource.OPEN) {
+			// Source already connected — attach listener immediately
+			// (handles the case where open event already fired, e.g. after HMR)
+			this.attachListener(type);
 		}
 
 		return () => {

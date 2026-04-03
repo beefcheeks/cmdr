@@ -22,6 +22,8 @@
     <dict>
       <key>PATH</key>
       <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+      <key>CMDR_CODE_DIR</key>
+      <string>~/Code</string>
     </dict>
   </dict>
 </plist>

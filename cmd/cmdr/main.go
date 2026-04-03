@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/mikehu/cmdr/internal/daemon"
+	"github.com/mikehu/cmdr/internal/db"
 	"github.com/mikehu/cmdr/internal/scheduler"
 	"github.com/spf13/cobra"
 )
@@ -71,7 +72,12 @@ func runCmd() *cobra.Command {
 		Short: "Run a task immediately",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := scheduler.New()
+			database, err := db.Open()
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+			s := scheduler.New(database)
 			return s.RunTask(args[0])
 		},
 	}
@@ -82,7 +88,12 @@ func listCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all registered tasks",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := scheduler.New()
+			database, err := db.Open()
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+			s := scheduler.New(database)
 			for _, t := range s.Tasks() {
 				fmt.Printf("  %-20s %s\t%s\n", t.Name, t.Schedule, t.Description)
 			}

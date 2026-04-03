@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/mikehu/cmdr/internal/db"
 	"github.com/mikehu/cmdr/internal/scheduler"
 )
 
@@ -53,7 +55,13 @@ func Run() error {
 	}
 	defer cleanup()
 
-	s := scheduler.New()
+	database, err := db.Open()
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer database.Close()
+
+	s := scheduler.New(database)
 	s.Start()
 	defer s.Stop()
 
@@ -62,7 +70,7 @@ func Run() error {
 	defer stopPoller()
 
 	mux := http.NewServeMux()
-	registerAPI(mux, s, bus)
+	registerAPI(mux, s, bus, database)
 
 	// Unix socket for CLI IPC
 	os.Remove(sockPath())
@@ -176,7 +184,7 @@ func Status() error {
 	return nil
 }
 
-func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus) {
+func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, database *sql.DB) {
 	mux.HandleFunc("/status", handleStatus(s))
 	mux.HandleFunc("/run", handleRun(s))
 
@@ -190,6 +198,17 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus) {
 	mux.HandleFunc("/api/tmux/sessions/kill", handleTmuxKill())
 	mux.HandleFunc("/api/claude/sessions", handleClaudeSessions())
 	mux.HandleFunc("/api/events", handleEvents(bus))
+
+	// Git monitoring
+	mux.HandleFunc("/api/repos", handleListRepos(database))
+	mux.HandleFunc("/api/repos/discover", handleDiscoverRepos(database))
+	mux.HandleFunc("/api/repos/add", handleAddRepo(database))
+	mux.HandleFunc("/api/repos/remove", handleRemoveRepo(database))
+	mux.HandleFunc("/api/commits", handleListCommits(database))
+	mux.HandleFunc("/api/commits/diff", handleCommitDiff(database))
+	mux.HandleFunc("/api/commits/files", handleCommitFiles(database))
+	mux.HandleFunc("/api/commits/seen", handleMarkSeen(database))
+	mux.HandleFunc("/api/sync", handleSyncRepos(database))
 }
 
 func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {

@@ -67,15 +67,17 @@ The daemon uses `CMDR_ENV` to isolate prod vs dev:
 - **`cmd/cmdr/`** — CLI entry point using Cobra. Subcommands: `start`, `stop`, `status`, `run`, `list`.
 - **`internal/daemon/`** — Daemon lifecycle with dual listeners: Unix socket for CLI IPC and TCP for the web UI. Environment-aware paths/ports via `CMDR_ENV`. API routes are registered with and without `/api` prefix.
 - **`internal/scheduler/`** — Wraps `robfig/cron/v3` with seconds precision. Tasks are registered in `New()` with cron expressions.
-- **`internal/tasks/`** — Individual task implementations. `Claude()` helper shells out to `claude -p` CLI. Add new tasks here and register them in the scheduler.
+- **`internal/tasks/`** — Individual task implementations. `Claude()` helper shells out to `claude -p` CLI. Tasks that need dependencies (e.g. `*sql.DB`) return closures. Add new tasks here and register them in the scheduler.
 - **`internal/tmux/`** — Tmux integration: session listing (`list-panes -a`), session creation with worktree-aware naming (ported from `tmux-sessionizer.sh`).
+- **`internal/db/`** — SQLite database (`~/.cmdr/cmdr.db`) using `modernc.org/sqlite` (pure Go). Schema migrations run on startup. Tables: `repos` (local git repos by path), `commits` (tracked commits with seen state), `task_config` (schedule/enabled overrides).
+- **`internal/gitlocal/`** — Local git repo integration. Discovers repos under `CMDR_CODE_DIR` (default `~/Code`), fetches via `git fetch`, reads commits via `git log`, diffs via `difft` (falls back to `git show`). All operations use local filesystem, no GitHub API.
 
 ### Frontend
 
 - **SvelteKit SPA** (`web/`) using `adapter-static` with `fallback: 'index.html'` for client-side routing. SSR is disabled (`ssr = false` in root layout).
 - **Tailwind CSS v4** for styling — use utility classes only, no custom CSS classes.
 - **`web/src/lib/api.ts`** — Typed API client for daemon communication (`/api/status`, `/api/tasks`, `/api/run`).
-- **`web/src/routes/`** — File-based routing. Dashboard (`/`) and Tasks (`/tasks`).
+- **`web/src/routes/`** — File-based routing. Dashboard (`/`) and Settings (`/settings`).
 
 ### Design System
 
@@ -100,3 +102,12 @@ Key rules:
 | `/api/run?task=` | GET/POST | Execute a task by name |
 | `/api/tmux/sessions` | GET | List all tmux sessions with windows/panes |
 | `/api/tmux/sessions/create` | POST | Create a new tmux session `{"dir": "/path"}` |
+| `/api/repos` | GET | List monitored local repos |
+| `/api/repos/discover` | GET | Scan `CMDR_CODE_DIR` for git repos not yet monitored |
+| `/api/repos/add` | POST | Add a local repo to monitor `{"path": "/path/to/repo", ...}` |
+| `/api/repos/remove` | POST | Remove a monitored repo `{"id": 1}` |
+| `/api/commits` | GET | List commits (query: `repo`, `unseen`, `limit`) |
+| `/api/commits/files` | GET | List files changed in a commit (query: `repo` path, `sha`) |
+| `/api/commits/diff` | GET | Get diff for a commit via difft/git (query: `repo` path, `sha`) |
+| `/api/commits/seen` | POST | Mark commits as seen `{"ids": [1,2,3]}` |
+| `/api/sync` | POST | Trigger `git fetch` + commit sync for all monitored repos |

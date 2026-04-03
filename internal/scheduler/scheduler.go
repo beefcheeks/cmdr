@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 
@@ -12,7 +13,7 @@ import (
 type Task struct {
 	Name        string
 	Description string
-	Schedule    string // cron expression
+	Schedule    string // cron expression (with seconds)
 	Fn          func() error
 }
 
@@ -23,16 +24,16 @@ type Scheduler struct {
 }
 
 // New creates a scheduler with all registered tasks.
-func New() *Scheduler {
+func New(db *sql.DB) *Scheduler {
 	s := &Scheduler{
 		cron: cron.New(cron.WithSeconds()),
 	}
-	s.register()
+	s.register(db)
 	return s
 }
 
 // register adds all defined tasks.
-func (s *Scheduler) register() {
+func (s *Scheduler) register(db *sql.DB) {
 	s.tasks = []Task{
 		{
 			Name:        "hello",
@@ -40,13 +41,18 @@ func (s *Scheduler) register() {
 			Schedule:    "0 0 * * * *", // every hour
 			Fn:          tasks.Hello,
 		},
-		// Add more tasks here as you build them, e.g.:
-		// {
-		// 	Name:        "daily-summary",
-		// 	Description: "Ask Claude to summarize Slack and generate todos",
-		// 	Schedule:    "0 0 9 * * 1-5", // 9am weekdays
-		// 	Fn:          tasks.DailySummary,
-		// },
+		{
+			Name:        "sync-commits",
+			Description: "Fetch new commits from monitored repos",
+			Schedule:    "0 */5 * * * *", // every 5 minutes
+			Fn:          tasks.SyncCommits(db),
+		},
+		{
+			Name:        "prune-commits",
+			Description: "Delete commits older than 2 weeks",
+			Schedule:    "0 0 3 * * *", // daily at 3am
+			Fn:          tasks.PruneCommits(db),
+		},
 	}
 }
 
