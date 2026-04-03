@@ -1,11 +1,17 @@
 package claude
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 	"time"
 )
+
+func tmuxSocketPath() string {
+	return fmt.Sprintf("/private/tmp/tmux-%d/default", os.Getuid())
+}
 
 // Signals in the Claude Code pane hint text
 const (
@@ -27,7 +33,7 @@ var tracker = struct {
 // PaneStatus checks the state of a Claude instance in a tmux pane.
 // Returns "working", "waiting", or "idle".
 func PaneStatus(tmuxTarget string) string {
-	out, err := exec.Command("tmux", "capture-pane", "-t", tmuxTarget, "-p").Output()
+	out, err := exec.Command("tmux", "-S", tmuxSocketPath(), "capture-pane", "-t", tmuxTarget, "-p").Output()
 	if err != nil {
 		return "unknown"
 	}

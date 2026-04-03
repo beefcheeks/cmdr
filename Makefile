@@ -1,5 +1,6 @@
 BIN_DIR     := $(HOME)/.local/bin
 PLIST_NAME  := com.mikehu.cmdr.plist
+LABEL       := com.mikehu.cmdr
 LAUNCH_DIR  := $(HOME)/Library/LaunchAgents
 GUI_DOMAIN  := gui/$(shell id -u)
 
@@ -26,7 +27,8 @@ install: build
 	@mkdir -p $(BIN_DIR) $(LAUNCH_DIR)
 	@cp cmdr $(BIN_DIR)/cmdr
 	@echo "cmdr: installed binary to $(BIN_DIR)/cmdr"
-	@launchctl bootout "$(GUI_DOMAIN)/$(PLIST_NAME)" 2>/dev/null || true
+	@launchctl bootout "$(GUI_DOMAIN)/$(LABEL)" 2>/dev/null || true
+	@sleep 1
 	@sed 's|__CMDR_BIN__|$(BIN_DIR)/cmdr|g' $(PLIST_NAME) > $(LAUNCH_DIR)/$(PLIST_NAME)
 	@launchctl bootstrap "$(GUI_DOMAIN)" "$(LAUNCH_DIR)/$(PLIST_NAME)"
 	@rm -f cmdr
@@ -34,13 +36,13 @@ install: build
 
 # Stop and remove service
 uninstall:
-	@launchctl bootout "$(GUI_DOMAIN)/$(PLIST_NAME)" 2>/dev/null || true
+	@launchctl bootout "$(GUI_DOMAIN)/$(LABEL)" 2>/dev/null || true
 	@rm -f $(BIN_DIR)/cmdr $(LAUNCH_DIR)/$(PLIST_NAME)
 	@echo "cmdr: uninstalled ✓"
 
 # Restart service without rebuilding
 restart:
-	@launchctl bootout "$(GUI_DOMAIN)/$(PLIST_NAME)" 2>/dev/null || true
+	@launchctl bootout "$(GUI_DOMAIN)/$(LABEL)" 2>/dev/null || true
 	@launchctl bootstrap "$(GUI_DOMAIN)" "$(LAUNCH_DIR)/$(PLIST_NAME)"
 	@echo "cmdr: restarted ✓"
 

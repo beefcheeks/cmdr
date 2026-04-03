@@ -1,6 +1,8 @@
 package tmux
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -38,16 +40,26 @@ const listFormat = "#{session_name}" + fieldSep +
 	"#{pane_current_path}" + fieldSep +
 	"#{pane_current_command}"
 
+// socketPath returns the default tmux socket path for the current user.
+// Uses /private/tmp on macOS (where /tmp is a symlink).
+func socketPath() string {
+	return fmt.Sprintf("/private/tmp/tmux-%d/default", os.Getuid())
+}
+
+// tmuxCmd creates a tmux command with an explicit socket path,
+// ensuring it works when run from launchd or other non-interactive contexts.
+func tmuxCmd(args ...string) *exec.Cmd {
+	fullArgs := append([]string{"-S", socketPath()}, args...)
+	return exec.Command("tmux", fullArgs...)
+}
+
 // ListSessions returns all tmux sessions with their windows and panes.
 // Returns an empty slice if tmux is not running.
 func ListSessions() ([]Session, error) {
-	out, err := exec.Command("tmux", "list-panes", "-a", "-F", listFormat).Output()
+	out, err := tmuxCmd("list-panes", "-a", "-F", listFormat).Output()
 	if err != nil {
 		// tmux not running — not an error, just no sessions
-		if strings.Contains(err.Error(), "exit status") {
-			return []Session{}, nil
-		}
-		return nil, err
+		return []Session{}, nil
 	}
 
 	return parsePaneOutput(strings.TrimSpace(string(out))), nil

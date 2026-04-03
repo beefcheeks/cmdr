@@ -35,12 +35,12 @@ func CreateSession(dir string) (string, error) {
 	name := SessionName(dir)
 
 	// Check if session already exists
-	if err := exec.Command("tmux", "has-session", "-t="+name).Run(); err == nil {
+	if err := tmuxCmd("has-session", "-t="+name).Run(); err == nil {
 		return name, nil
 	}
 
 	// Create detached session
-	if out, err := exec.Command("tmux", "new-session", "-ds", name, "-c", dir).CombinedOutput(); err != nil {
+	if out, err := tmuxCmd("new-session", "-ds", name, "-c", dir).CombinedOutput(); err != nil {
 		return "", fmt.Errorf("tmux new-session: %s: %w", strings.TrimSpace(string(out)), err)
 	}
 
