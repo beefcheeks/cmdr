@@ -1,0 +1,82 @@
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/orbitron@5/700.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/space-grotesk@5/400.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/space-grotesk@5/500.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  .wrap { background: #1a1510; border-radius: 14px; padding: 28px; display: flex; flex-direction: column; gap: 28px; }
+  .orb { font-family: 'Orbitron', monospace; font-weight: 700; }
+  .sg { font-family: 'Space Grotesk', sans-serif; }
+
+  .page-header { display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid rgba(255,255,255,0.07); padding-bottom: 20px; }
+  .page-title { font-size: 22px; color: #FAC775; letter-spacing: 0.02em; }
+  .page-sub { font-size: 14px; color: #7a6a55; font-weight: 400; }
+
+  .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .card-label { font-size: 10px; letter-spacing: 0.14em; color: #EF9F27; text-transform: uppercase; }
+  .card-value { font-size: 26px; color: #f0dfc0; }
+  .card-desc { font-size: 13px; color: #5a4a35; font-weight: 400; }
+
+  .section-title { font-size: 11px; letter-spacing: 0.16em; color: #EF9F27; text-transform: uppercase; margin-bottom: 4px; }
+  .todo-list { display: flex; flex-direction: column; gap: 2px; }
+  .todo-item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.02); }
+  .todo-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid #3a2e20; flex-shrink: 0; }
+  .todo-check.done { background: #BA7517; border-color: #BA7517; }
+  .todo-text { font-size: 14px; color: #c8a97a; font-weight: 400; flex: 1; }
+  .todo-text.done { color: #4a3a28; text-decoration: line-through; }
+  .todo-tag { font-size: 10px; letter-spacing: 0.1em; padding: 2px 8px; border-radius: 20px; background: rgba(83,74,183,0.2); color: #AFA9EC; }
+
+  .body-block { background: rgba(255,255,255,0.02); border-left: 3px solid #BA7517; border-radius: 0 8px 8px 0; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+  .body-text { font-size: 14px; color: #7a6a55; line-height: 1.7; font-weight: 400; }
+</style>
+
+<div class="wrap">
+
+  <div class="page-header">
+    <div class="orb page-title">good morning, mike</div>
+    <div class="sg page-sub">Thursday, April 2 · 3 tasks pending · last sync 4 min ago</div>
+  </div>
+
+  <div>
+    <div class="orb section-title">overview</div>
+    <div class="cards" style="margin-top:10px;">
+      <div class="card">
+        <div class="orb card-label">files indexed</div>
+        <div class="orb card-value">14,302</div>
+        <div class="sg card-desc">↑ 240 since yesterday</div>
+      </div>
+      <div class="card">
+        <div class="orb card-label">stash jobs</div>
+        <div class="orb card-value">3 active</div>
+        <div class="sg card-desc">crawler running · eta 12 min</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="orb section-title">today</div>
+    <div class="todo-list" style="margin-top:10px;">
+      <div class="todo-item">
+        <div class="todo-check done"></div>
+        <div class="sg todo-text done">Review NFS ACL migration on TrueNAS</div>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check"></div>
+        <div class="sg todo-text">Export transparent WebM assets for avatar</div>
+        <div class="sg todo-tag">cmdr</div>
+      </div>
+      <div class="todo-item">
+        <div class="todo-check"></div>
+        <div class="sg todo-text">Push Stasher crawler config to Portainer</div>
+        <div class="sg todo-tag">stasher</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body-block">
+    <div class="orb" style="font-size:12px; color:#EF9F27; letter-spacing:0.1em;">NOTE</div>
+    <div class="sg body-text">The bourbon bg pulls the amber from the logo into the whole UI — everything feels warm and cohesive. Purple accents on the tags give it just enough contrast to breathe.</div>
+  </div>
+
+</div>

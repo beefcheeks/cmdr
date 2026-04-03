@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BIN_DIR="$HOME/.local/bin"
-PLIST_NAME="com.mike.cmdr.plist"
+PLIST_NAME="com.mikehu.cmdr.plist"
 LAUNCH_AGENTS="$HOME/Library/LaunchAgents"
 
 echo "cmdr: building..."

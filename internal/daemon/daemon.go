@@ -1,7 +1,9 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -14,23 +16,34 @@ import (
 	"github.com/mikehu/cmdr/internal/scheduler"
 )
 
-const (
-	sockName = "cmdr.sock"
-	pidFile  = "cmdr.pid"
-)
+// IsDev returns true when CMDR_ENV=dev.
+func IsDev() bool {
+	return os.Getenv("CMDR_ENV") == "dev"
+}
+
+func httpAddr() string {
+	if IsDev() {
+		return "127.0.0.1:7370"
+	}
+	return "127.0.0.1:7369"
+}
 
 func runtimeDir() string {
-	dir := filepath.Join(os.TempDir(), "cmdr")
+	name := "cmdr"
+	if IsDev() {
+		name = "cmdr-dev"
+	}
+	dir := filepath.Join(os.TempDir(), name)
 	os.MkdirAll(dir, 0o700)
 	return dir
 }
 
 func sockPath() string {
-	return filepath.Join(runtimeDir(), sockName)
+	return filepath.Join(runtimeDir(), "cmdr.sock")
 }
 
 func pidPath() string {
-	return filepath.Join(runtimeDir(), pidFile)
+	return filepath.Join(runtimeDir(), "cmdr.pid")
 }
 
 // Run starts the daemon in the foreground (blocking).
@@ -44,32 +57,31 @@ func Run() error {
 	s.Start()
 	defer s.Stop()
 
+	bus := NewEventBus()
+	stopPoller := startPoller(bus, s)
+	defer stopPoller()
+
 	mux := http.NewServeMux()
-	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"status":"running","pid":%d,"tasks":%d}`, os.Getpid(), len(s.Tasks()))
-	})
-	mux.HandleFunc("/run", func(w http.ResponseWriter, r *http.Request) {
-		task := r.URL.Query().Get("task")
-		if task == "" {
-			http.Error(w, "missing ?task= parameter", http.StatusBadRequest)
-			return
-		}
-		if err := s.RunTask(task); err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		fmt.Fprintf(w, `{"ran":"%s"}`, task)
-	})
+	registerAPI(mux, s, bus)
 
-	// Listen on unix socket so CLI can talk to daemon
+	// Unix socket for CLI IPC
 	os.Remove(sockPath())
-	ln, err := net.Listen("unix", sockPath())
+	unixLn, err := net.Listen("unix", sockPath())
 	if err != nil {
-		return fmt.Errorf("listen: %w", err)
+		return fmt.Errorf("listen unix: %w", err)
 	}
-	defer ln.Close()
+	defer unixLn.Close()
 
-	srv := &http.Server{Handler: mux}
+	// TCP listener for web UI
+	addr := httpAddr()
+	tcpLn, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("listen tcp: %w", err)
+	}
+	defer tcpLn.Close()
+
+	unixSrv := &http.Server{Handler: mux}
+	tcpSrv := &http.Server{Handler: mux}
 
 	// Graceful shutdown on SIGTERM/SIGINT
 	sig := make(chan os.Signal, 1)
@@ -78,11 +90,22 @@ func Run() error {
 	go func() {
 		<-sig
 		fmt.Println("\ncmdr: shutting down")
-		srv.Close()
+		unixSrv.Close()
+		tcpSrv.Close()
 	}()
 
-	fmt.Printf("cmdr: daemon running (pid %d)\n", os.Getpid())
-	if err := srv.Serve(ln); err != http.ErrServerClosed {
+	go func() {
+		if err := tcpSrv.Serve(tcpLn); err != http.ErrServerClosed {
+			log.Printf("cmdr: tcp server error: %v", err)
+		}
+	}()
+
+	mode := "prod"
+	if IsDev() {
+		mode = "dev"
+	}
+	fmt.Printf("cmdr: daemon running [%s] (pid %d, http %s)\n", mode, os.Getpid(), addr)
+	if err := unixSrv.Serve(unixLn); err != http.ErrServerClosed {
 		return err
 	}
 	return nil
@@ -143,7 +166,7 @@ func Status() error {
 	client := &http.Client{
 		Transport: unixDialer(sockPath()),
 	}
-	resp, err := client.Get("http://cmdr/status")
+	resp, err := client.Get("http://cmdr/api/status")
 	if err == nil {
 		defer resp.Body.Close()
 		body := make([]byte, 1024)
@@ -151,6 +174,69 @@ func Status() error {
 		fmt.Println(string(body[:n]))
 	}
 	return nil
+}
+
+func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus) {
+	mux.HandleFunc("/status", handleStatus(s))
+	mux.HandleFunc("/run", handleRun(s))
+
+	// /api prefix for web UI
+	mux.HandleFunc("/api/status", handleStatus(s))
+	mux.HandleFunc("/api/tasks", handleTasks(s))
+	mux.HandleFunc("/api/run", handleRun(s))
+	mux.HandleFunc("/api/tmux/sessions", handleTmuxSessions())
+	mux.HandleFunc("/api/tmux/sessions/create", handleTmuxCreateSession())
+	mux.HandleFunc("/api/tmux/sessions/switch", handleTmuxSwitch())
+	mux.HandleFunc("/api/tmux/sessions/kill", handleTmuxKill())
+	mux.HandleFunc("/api/claude/sessions", handleClaudeSessions())
+	mux.HandleFunc("/api/events", handleEvents(bus))
+}
+
+func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"status": "running",
+			"pid":    os.Getpid(),
+			"tasks":  len(s.Tasks()),
+		})
+	}
+}
+
+func handleTasks(s *scheduler.Scheduler) http.HandlerFunc {
+	type taskInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Schedule    string `json:"schedule"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		items := make([]taskInfo, 0, len(s.Tasks()))
+		for _, t := range s.Tasks() {
+			items = append(items, taskInfo{
+				Name:        t.Name,
+				Description: t.Description,
+				Schedule:    t.Schedule,
+			})
+		}
+		json.NewEncoder(w).Encode(items)
+	}
+}
+
+func handleRun(s *scheduler.Scheduler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		task := r.URL.Query().Get("task")
+		if task == "" {
+			http.Error(w, `{"error":"missing ?task= parameter"}`, http.StatusBadRequest)
+			return
+		}
+		if err := s.RunTask(task); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"output": fmt.Sprintf("task %q executed", task)})
+	}
 }
 
 func writePID() error {

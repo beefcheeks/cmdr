@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="282" height="120" viewBox="205 25 282 120">
+  <defs>
+    <style>@import url('https://cdn.jsdelivr.net/npm/@fontsource/orbitron@5/700.css');</style>
+    <clipPath id="cc">
+      <rect x="215" y="30" width="105" height="105" rx="16"/>
+    </clipPath>
+    <clipPath id="rc">
+      <rect x="382" y="30" width="105" height="105" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <rect x="215" y="35" width="105" height="105" rx="16" fill="#26215C"/>
+  <rect x="215" y="30" width="105" height="105" rx="16" fill="#534AB7"/>
+  <rect x="215" y="30" width="105" height="9" fill="#7F77DD" clip-path="url(#cc)"/>
+  <rect x="215" y="39" width="105" height="7" fill="#7F77DD" fill-opacity="0.25" clip-path="url(#cc)"/>
+  <text x="267" y="89" font-family="var(--font-mono, monospace)" font-size="54" fill="#EEEDFE" text-anchor="middle" dominant-baseline="central">⌘</text>
+
+  <text x="352" y="85" font-family="var(--font-mono, monospace)" font-size="32" fill="#888" text-anchor="middle" dominant-baseline="central">+</text>
+
+  <rect x="382" y="35" width="105" height="105" rx="16" fill="#633806"/>
+  <rect x="382" y="30" width="105" height="105" rx="16" fill="#EF9F27"/>
+  <rect x="382" y="30" width="105" height="9" fill="#FAC775" clip-path="url(#rc)"/>
+  <rect x="382" y="39" width="105" height="7" fill="#FAC775" fill-opacity="0.25" clip-path="url(#rc)"/>
+  <text x="434" y="82" font-family="'Orbitron', monospace" font-size="54" font-weight="700" fill="#412402" text-anchor="middle" dominant-baseline="central">r</text>
+</svg>

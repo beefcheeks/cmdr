@@ -1,0 +1,114 @@
+package tmux
+
+import (
+	"os/exec"
+	"strconv"
+	"strings"
+)
+
+// Pane represents a single tmux pane.
+type Pane struct {
+	Index   int    `json:"index"`
+	CWD     string `json:"cwd"`
+	Command string `json:"command"`
+}
+
+// Window represents a tmux window containing panes.
+type Window struct {
+	Index  int    `json:"index"`
+	Name   string `json:"name"`
+	Active bool   `json:"active"`
+	Panes  []Pane `json:"panes"`
+}
+
+// Session represents a tmux session.
+type Session struct {
+	Name     string   `json:"name"`
+	Attached bool     `json:"attached"`
+	Windows  []Window `json:"windows"`
+}
+
+const fieldSep = "\t"
+const listFormat = "#{session_name}" + fieldSep +
+	"#{session_attached}" + fieldSep +
+	"#{window_index}" + fieldSep +
+	"#{window_name}" + fieldSep +
+	"#{window_active}" + fieldSep +
+	"#{pane_index}" + fieldSep +
+	"#{pane_current_path}" + fieldSep +
+	"#{pane_current_command}"
+
+// ListSessions returns all tmux sessions with their windows and panes.
+// Returns an empty slice if tmux is not running.
+func ListSessions() ([]Session, error) {
+	out, err := exec.Command("tmux", "list-panes", "-a", "-F", listFormat).Output()
+	if err != nil {
+		// tmux not running — not an error, just no sessions
+		if strings.Contains(err.Error(), "exit status") {
+			return []Session{}, nil
+		}
+		return nil, err
+	}
+
+	return parsePaneOutput(strings.TrimSpace(string(out))), nil
+}
+
+func parsePaneOutput(output string) []Session {
+	if output == "" {
+		return []Session{}
+	}
+
+	sessionMap := make(map[string]*Session)
+	windowMap := make(map[string]*Window) // key: "session:winIdx"
+	var sessionOrder []string
+
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Split(line, fieldSep)
+		if len(fields) < 8 {
+			continue
+		}
+
+		sessName := fields[0]
+		sessAttached := fields[1] == "1"
+		winIdx, _ := strconv.Atoi(fields[2])
+		winName := fields[3]
+		winActive := fields[4] == "1"
+		paneIdx, _ := strconv.Atoi(fields[5])
+		paneCWD := fields[6]
+		paneCmd := fields[7]
+
+		// Session
+		sess, exists := sessionMap[sessName]
+		if !exists {
+			sess = &Session{Name: sessName, Attached: sessAttached}
+			sessionMap[sessName] = sess
+			sessionOrder = append(sessionOrder, sessName)
+		}
+
+		// Window
+		winKey := sessName + ":" + strconv.Itoa(winIdx)
+		win, exists := windowMap[winKey]
+		if !exists {
+			win = &Window{Index: winIdx, Name: winName, Active: winActive}
+			windowMap[winKey] = win
+			sess.Windows = append(sess.Windows, *win)
+		}
+
+		// Pane
+		pane := Pane{Index: paneIdx, CWD: paneCWD, Command: paneCmd}
+
+		// Find and update the window in the session (since we appended a copy)
+		for i := range sess.Windows {
+			if sess.Windows[i].Index == winIdx {
+				sess.Windows[i].Panes = append(sess.Windows[i].Panes, pane)
+				break
+			}
+		}
+	}
+
+	sessions := make([]Session, 0, len(sessionOrder))
+	for _, name := range sessionOrder {
+		sessions = append(sessions, *sessionMap[name])
+	}
+	return sessions
+}

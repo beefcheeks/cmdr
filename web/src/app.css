@@ -1,0 +1,77 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Dark bourbon palette */
+	--color-bourbon-950: #1a1510;
+	--color-bourbon-900: #241e16;
+	--color-bourbon-800: #332a1f;
+	--color-bourbon-700: #4a3d2e;
+	--color-bourbon-600: #655440;
+	--color-bourbon-500: #897562;
+	--color-bourbon-400: #a89580;
+	--color-bourbon-300: #c4b5a2;
+	--color-bourbon-200: #ddd2c4;
+	--color-bourbon-100: #f0ebe4;
+	--color-bourbon-50: #f8f5f1;
+
+	/* Accent: cmd purple */
+	--color-cmd-700: #26215C;
+	--color-cmd-600: #3d3690;
+	--color-cmd-500: #534AB7;
+	--color-cmd-400: #7F77DD;
+	--color-cmd-300: #EEEDFE;
+
+	/* Accent: run amber */
+	--color-run-700: #633806;
+	--color-run-600: #b36f0a;
+	--color-run-500: #EF9F27;
+	--color-run-400: #FAC775;
+	--color-run-300: #FDE9C4;
+
+	/* Typography */
+	--font-display: 'Orbitron', sans-serif;
+	--font-body: 'Space Grotesk', sans-serif;
+	--font-sans: 'Space Grotesk', sans-serif;
+}
+
+@theme {
+	--animate-fade-out: fade-out 1s 2s ease-out forwards;
+}
+
+@keyframes fade-out {
+	from { opacity: 1; }
+	to { opacity: 0; }
+}
+
+/* Component classes — reusable design system patterns */
+@layer components {
+	.btn-chiclet {
+		@apply shrink-0 w-10 h-10 flex items-center justify-center
+			rounded-lg border-t
+			bg-cmd-500 text-cmd-300 border-t-cmd-400/50
+			shadow-[0_3px_0_0_var(--color-cmd-700)]
+			hover:brightness-110
+			active:translate-y-0.5 active:shadow-none
+			transition-all cursor-pointer;
+	}
+
+	.btn-chiclet-danger {
+		@apply shrink-0 w-10 h-10 flex items-center justify-center
+			rounded-lg border-t
+			bg-red-900 text-red-300 border-t-red-700/50
+			shadow-[0_3px_0_0_var(--color-red-950)]
+			hover:brightness-110
+			active:translate-y-0.5 active:shadow-none
+			transition-all cursor-pointer;
+	}
+
+	.btn-chiclet-alt {
+		@apply shrink-0 w-10 h-10 flex items-center justify-center
+			rounded-lg border-t
+			bg-run-500 text-run-700 border-t-run-400/50
+			shadow-[0_3px_0_0_var(--color-run-700)]
+			hover:brightness-110
+			active:translate-y-0.5 active:shadow-none
+			transition-all cursor-pointer;
+	}
+}
