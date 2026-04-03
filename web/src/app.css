@@ -52,6 +52,16 @@
 .diff-hunk { color: #22d3ee; }
 .diff-dim { opacity: 0.5; }
 
+/* Background patterns */
+.bg-crosshair {
+	background-image:
+		linear-gradient(rgba(239,159,39,0.05) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(239,159,39,0.05) 1px, transparent 1px),
+		linear-gradient(rgba(239,159,39,0.12) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(239,159,39,0.12) 1px, transparent 1px);
+	background-size: 14px 14px, 14px 14px, 70px 70px, 70px 70px;
+}
+
 /* Component classes — reusable design system patterns */
 @layer components {
 	.btn-chiclet {

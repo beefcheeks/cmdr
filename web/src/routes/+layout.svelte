@@ -22,8 +22,9 @@
 	onDestroy(unsub);
 </script>
 
-<div class="min-h-screen bg-bourbon-950 text-bourbon-300 font-body">
-	<div class="max-w-7xl mx-auto px-6 py-4">
+<div class="relative min-h-screen bg-bourbon-950 text-bourbon-300 font-body bg-crosshair">
+	<div class="pointer-events-none absolute inset-x-0 top-0 h-80 z-0 bg-linear-to-b from-bourbon-950 from-40% via-bourbon-950/85 via-50% to-transparent"></div>
+	<div class="relative z-10 max-w-7xl mx-auto px-6 py-4">
 		<nav class="flex items-center justify-between mb-6">
 			<div class="flex items-center gap-5">
 				<a href="/" class="no-underline">
@@ -38,7 +39,7 @@
 					{status ? `pid ${status.pid}` : 'offline'}
 				</span>
 				{#if status?.version}
-					<span class="text-[10px] font-mono text-bourbon-700">{status.version}</span>
+					<span class="text-[10px] font-mono text-bourbon-700">build {status.version}</span>
 				{/if}
 			</div>
 			<ul class="flex list-none gap-1 p-0">

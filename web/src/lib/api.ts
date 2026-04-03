@@ -67,6 +67,7 @@ export interface ClaudeSession {
 	startedAt: number;
 	uptime: string;
 	status: 'working' | 'waiting' | 'idle' | 'unknown';
+	tmuxTarget?: string;
 }
 
 export function getClaudeSessions(): Promise<ClaudeSession[]> {

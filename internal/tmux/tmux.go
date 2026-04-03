@@ -11,6 +11,7 @@ import (
 // Pane represents a single tmux pane.
 type Pane struct {
 	Index   int    `json:"index"`
+	PID     int    `json:"pid"`
 	CWD     string `json:"cwd"`
 	Command string `json:"command"`
 }
@@ -37,6 +38,7 @@ const listFormat = "#{session_name}" + fieldSep +
 	"#{window_name}" + fieldSep +
 	"#{window_active}" + fieldSep +
 	"#{pane_index}" + fieldSep +
+	"#{pane_pid}" + fieldSep +
 	"#{pane_current_path}" + fieldSep +
 	"#{pane_current_command}"
 
@@ -78,7 +80,7 @@ func parsePaneOutput(output string) []Session {
 
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Split(line, fieldSep)
-		if len(fields) < 8 {
+		if len(fields) < 9 {
 			continue
 		}
 
@@ -88,8 +90,9 @@ func parsePaneOutput(output string) []Session {
 		winName := fields[3]
 		winActive := fields[4] == "1"
 		paneIdx, _ := strconv.Atoi(fields[5])
-		paneCWD := fields[6]
-		paneCmd := fields[7]
+		panePID, _ := strconv.Atoi(fields[6])
+		paneCWD := fields[7]
+		paneCmd := fields[8]
 
 		// Session
 		sess, exists := sessionMap[sessName]
@@ -109,7 +112,7 @@ func parsePaneOutput(output string) []Session {
 		}
 
 		// Pane
-		pane := Pane{Index: paneIdx, CWD: paneCWD, Command: paneCmd}
+		pane := Pane{Index: paneIdx, PID: panePID, CWD: paneCWD, Command: paneCmd}
 
 		// Find and update the window in the session (since we appended a copy)
 		for i := range sess.Windows {

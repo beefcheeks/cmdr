@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mikehu/cmdr/internal/claude"
@@ -70,18 +73,24 @@ func publishClaude(bus *EventBus) {
 		return
 	}
 
-	// Find Claude panes in tmux and check attention state.
-	// Match by: Claude session cwd matches tmux pane cwd, and pane runs "claude".
+	// Find Claude panes in tmux and match by PID ancestry.
+	// Each Claude session has a PID; the pane has a shell PID.
+	// Claude's PPID == pane shell PID → exact match.
 	tmuxSessions, _ := tmux.ListSessions()
 	claudePanes := collectClaudePanes(tmuxSessions)
+	ppidMap := getParentPIDs()
+
+	// Build set of pane shell PIDs for fast lookup
+	shellPIDs := make(map[int]*claudePane)
+	for i := range claudePanes {
+		shellPIDs[claudePanes[i].shellPID] = &claudePanes[i]
+	}
 
 	for i := range sessions {
-		for _, cp := range claudePanes {
-			if cp.cwd == sessions[i].CWD {
-				sessions[i].TmuxTarget = cp.target
-				sessions[i].Status = claude.PaneStatus(cp.target)
-				break
-			}
+		// Walk up the process tree from Claude's PID to find the pane shell
+		if cp := findAncestorPane(sessions[i].PID, ppidMap, shellPIDs); cp != nil {
+			sessions[i].TmuxTarget = cp.target
+			sessions[i].Status = claude.PaneStatus(cp.target)
 		}
 	}
 
@@ -92,8 +101,8 @@ func publishClaude(bus *EventBus) {
 }
 
 type claudePane struct {
-	target string // e.g. "cmdr:1.3"
-	cwd    string
+	target   string // e.g. "cmdr:1.3"
+	shellPID int    // PID of the shell process in the pane
 }
 
 func collectClaudePanes(sessions []tmux.Session) []claudePane {
@@ -103,10 +112,45 @@ func collectClaudePanes(sessions []tmux.Session) []claudePane {
 			for _, p := range w.Panes {
 				if p.Command == "claude" {
 					target := fmt.Sprintf("%s:%d.%d", s.Name, w.Index, p.Index)
-					panes = append(panes, claudePane{target: target, cwd: p.CWD})
+					panes = append(panes, claudePane{target: target, shellPID: p.PID})
 				}
 			}
 		}
 	}
 	return panes
+}
+
+// findAncestorPane walks up the process tree from pid to find a matching pane shell.
+// Handles intermediate processes (e.g., zsh → volta-shim → node).
+func findAncestorPane(pid int, ppidMap map[int]int, shellPIDs map[int]*claudePane) *claudePane {
+	visited := make(map[int]bool)
+	for cur := pid; cur > 1 && !visited[cur]; cur = ppidMap[cur] {
+		visited[cur] = true
+		if cp, ok := shellPIDs[cur]; ok {
+			return cp
+		}
+	}
+	return nil
+}
+
+// getParentPIDs returns a map of PID → PPID for all processes.
+// Single `ps` call, efficient for matching Claude PIDs to pane shell PIDs.
+func getParentPIDs() map[int]int {
+	out, err := exec.Command("ps", "-eo", "pid,ppid").Output()
+	if err != nil {
+		return nil
+	}
+	m := make(map[int]int)
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		pid, err1 := strconv.Atoi(fields[0])
+		ppid, err2 := strconv.Atoi(fields[1])
+		if err1 == nil && err2 == nil {
+			m[pid] = ppid
+		}
+	}
+	return m
 }

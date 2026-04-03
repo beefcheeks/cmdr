@@ -100,21 +100,42 @@
 		return path.replace(/^\/Users\/[^/]+/, '~');
 	}
 
-	function normalize(name: string): string {
-		return name.replace(/[.\- ]/g, '_');
+	function truncatePath(path: string, maxLen = 25): string {
+		const short = shortenPath(path);
+		if (short.length <= maxLen) return short;
+		const parts = short.split('/');
+		// Keep last 2 segments with ellipsis prefix
+		if (parts.length > 2) return '…/' + parts.slice(-2).join('/');
+		return '…' + short.slice(-maxLen + 1);
 	}
 
-	let claudeBySession = $derived(
-		new Map(
-			claudeSessions
-				.filter((c) => sessions.some((s) => s.name === normalize(c.project)))
-				.map((c) => [normalize(c.project), c])
-		)
+	// Map Claude sessions by their tmux pane target (e.g. "stasher:1.3")
+	let claudeByTarget = $derived(
+		new Map(claudeSessions.filter((c) => c.tmuxTarget).map((c) => [c.tmuxTarget, c]))
 	);
 
+	// Best Claude status per tmux session (for session-level badge)
+	const statusRank: Record<string, number> = { working: 3, waiting: 2, idle: 1, unknown: 0 };
+	let claudeBySession = $derived(() => {
+		const map = new Map<string, ClaudeSession>();
+		for (const c of claudeSessions) {
+			if (!c.tmuxTarget) continue;
+			const sessName = c.tmuxTarget.split(':')[0];
+			const existing = map.get(sessName);
+			if (!existing || (statusRank[c.status] ?? 0) > (statusRank[existing.status] ?? 0)) {
+				map.set(sessName, c);
+			}
+		}
+		return map;
+	});
+
 	let unmatchedClaude = $derived(
-		claudeSessions.filter((c) => !sessions.some((s) => s.name === normalize(c.project)))
+		claudeSessions.filter((c) => !c.tmuxTarget)
 	);
+
+	function paneTarget(sessionName: string, winIdx: number, paneIdx: number): string {
+		return `${sessionName}:${winIdx}.${paneIdx}`;
+	}
 
 	// --- Commits ---
 	let expandedCommit: string | null = $state(null);
@@ -262,15 +283,15 @@
 		{:else}
 			<div class="flex flex-col gap-1.5">
 				{#each sessions as session}
-					{@const claude = claudeBySession.get(session.name)}
+					{@const claude = claudeBySession().get(session.name)}
 					{#if killedSession === session.name}
 						<div class="flex items-center justify-center border border-red-900/30 rounded-lg px-5 py-3.5 text-red-400
 							animate-fade-out">
 							<span class="font-display text-xs font-bold uppercase tracking-widest">killed {session.name}</span>
 						</div>
 					{:else}
-					<div class="group flex items-center gap-4 {session.attached ? 'bg-bourbon-800/40' : 'bg-bourbon-950/30'} border border-bourbon-800 rounded-lg px-5 py-3.5">
-						<div class="flex-1 min-w-0">
+					<div class="group relative overflow-hidden {session.attached ? 'bg-bourbon-800/40' : 'bg-bourbon-950/30'} border border-bourbon-800 rounded-lg px-5 py-3.5">
+						<div class="min-w-0">
 							<div class="flex items-center gap-2 mb-2">
 								<div
 									class="w-2 h-2 rounded-full {session.attached
@@ -293,7 +314,7 @@
 										working: 'claude · working',
 										waiting: 'claude · waiting',
 										idle: `claude · idle · ${claude.uptime}`,
-										unknown: `claude · ${claude.uptime}`
+										unknown: `claude · ? · ${claude.uptime}`
 									}[claude.status]}
 									<span class="flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full {statusStyle}">
 										<Sparkles size={10} />
@@ -304,8 +325,24 @@
 							<div class="flex flex-col gap-1 ml-4">
 								{#each session.windows as window}
 									{#each window.panes as pane}
-										<div class="flex items-center gap-3 text-sm">
-											<span class="text-bourbon-600 font-mono text-xs">{pane.command}</span>
+										{@const paneClause = claudeByTarget.get(paneTarget(session.name, window.index, pane.index))}
+										<div class="flex items-center gap-3 text-sm min-w-0">
+											<span class="text-bourbon-600 font-mono text-xs shrink-0">{pane.command}</span>
+											{#if paneClause}
+												{@const st = paneClause.status}
+												<span class="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap shrink-0
+													{st === 'working' ? 'text-green-400 bg-green-900/30' :
+													 st === 'waiting' ? 'text-run-400 bg-run-700/30 animate-pulse' :
+													 st === 'idle' ? 'text-bourbon-500 bg-bourbon-800/30' :
+													 'text-cmd-400 bg-cmd-700/30'}">
+													<span class="w-1.5 h-1.5 rounded-full
+														{st === 'working' ? 'bg-green-500' :
+														 st === 'waiting' ? 'bg-run-500' :
+														 st === 'idle' ? 'bg-bourbon-600' :
+														 'bg-cmd-500'}"></span>
+													{st === 'idle' ? `idle · ${paneClause.uptime}` : st === 'unknown' ? `? · ${paneClause.uptime}` : st}
+												</span>
+											{/if}
 											<button
 											onclick={(e) => { e.stopPropagation(); openFolder(pane.cwd); }}
 											class="text-bourbon-500 font-mono text-xs hover:text-cmd-400 transition-colors cursor-pointer text-left"
@@ -315,7 +352,8 @@
 								{/each}
 							</div>
 						</div>
-						<div class="flex items-start gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-4 pl-10 opacity-0 group-hover:opacity-100 transition-opacity"
+							style="background: linear-gradient(to right, transparent, {session.attached ? 'var(--color-bourbon-800)' : 'var(--color-bourbon-950)'} 30%)">
 							{#if session.attached}
 								<button
 									onclick={() => focusTmuxSession(session.name)}

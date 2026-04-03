@@ -31,42 +31,44 @@ var tracker = struct {
 }
 
 // PaneStatus checks the state of a Claude instance in a tmux pane.
-// Returns "working", "waiting", or "idle".
+// Returns "working", "waiting", "idle", or "unknown".
 func PaneStatus(tmuxTarget string) string {
 	out, err := exec.Command("tmux", "-S", tmuxSocketPath(), "capture-pane", "-t", tmuxTarget, "-p").Output()
 	if err != nil {
 		return "unknown"
 	}
 
-	// Only check the last non-empty line — that's where the hint text lives
+	// Scan the last few lines for signals — hint text is usually at the bottom
+	// but can shift up slightly due to wrapping or multi-line prompts.
 	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	lastLine := ""
-	if len(lines) > 0 {
-		lastLine = lines[len(lines)-1]
+	tail := lines
+	if len(tail) > 5 {
+		tail = tail[len(tail)-5:]
 	}
 
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 
-	if strings.Contains(lastLine, workingSignal) {
-		// "esc to interrupt" — actively working
-		tracker.lastWorking[tmuxTarget] = time.Now()
-		return "working"
-	}
-
-	if strings.Contains(lastLine, idleSignal) {
-		// "hold Space to speak" — prompt is up
-		lastWork, exists := tracker.lastWorking[tmuxTarget]
-		if exists && time.Since(lastWork) < idleThreshold {
-			return "waiting"
+	for _, line := range tail {
+		if strings.Contains(line, workingSignal) {
+			tracker.lastWorking[tmuxTarget] = time.Now()
+			return "working"
 		}
-		return "idle"
 	}
 
-	// Neither signal found — could be a permission prompt or other interactive state
-	// Treat as working since it's not at the idle prompt
-	tracker.lastWorking[tmuxTarget] = time.Now()
-	return "working"
+	for _, line := range tail {
+		if strings.Contains(line, idleSignal) {
+			lastWork, exists := tracker.lastWorking[tmuxTarget]
+			if exists && time.Since(lastWork) < idleThreshold {
+				return "waiting"
+			}
+			return "idle"
+		}
+	}
+
+	// Neither signal found — don't assume working.
+	// Could be a permission prompt, compact output, or crashed session.
+	return "unknown"
 }
 
 // CleanupTracker removes tracking for targets that no longer exist.
