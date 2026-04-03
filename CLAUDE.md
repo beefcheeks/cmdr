@@ -32,6 +32,12 @@ The production daemon (via launchd) serves both the API and the embedded SPA on 
 
 The daemon runs as a launchd user agent (`com.mikehu.cmdr`). `make install` handles building, plist installation, and service bootstrapping. Logs go to `/tmp/cmdr.out.log` and `/tmp/cmdr.err.log`.
 
+## Conventions
+
+- **Commits**: Use semantic/conventional commit messages: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`, `style:`, `test:`. Keep the subject concise.
+- **Tailwind only**: No custom CSS classes in components. Use utility classes.
+- **Orbitron**: Only use at even pixel sizes (10, 12, 14) — odd sizes cause artifacts.
+
 ## Architecture
 
 ### Backend

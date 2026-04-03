@@ -6,12 +6,27 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/mikehu/cmdr/internal/gitlocal"
 	"github.com/mikehu/cmdr/internal/tasks"
 )
+
+// cachedGitAuthor stores the current user's git author name, loaded once.
+var cachedGitAuthor string
+
+func gitAuthor() string {
+	if cachedGitAuthor != "" {
+		return cachedGitAuthor
+	}
+	out, err := exec.Command("git", "config", "user.name").Output()
+	if err == nil {
+		cachedGitAuthor = strings.TrimSpace(string(out))
+	}
+	return cachedGitAuthor
+}
 
 // --- Repos ---
 
@@ -190,6 +205,7 @@ func handleListCommits(db *sql.DB) http.HandlerFunc {
 
 		repoFilter := r.URL.Query().Get("repo")
 		unseenOnly := r.URL.Query().Get("unseen") == "true"
+		includeMine := r.URL.Query().Get("mine") == "true"
 
 		// Use a windowed query to get N most recent commits per repo
 		query := `
@@ -205,6 +221,14 @@ func handleListCommits(db *sql.DB) http.HandlerFunc {
 			)
 		`
 		args := []any{perRepo}
+
+		// Exclude own commits by default
+		if !includeMine {
+			if author := gitAuthor(); author != "" {
+				query += ` AND c.author != ?`
+				args = append(args, author)
+			}
+		}
 
 		if repoFilter != "" {
 			query += ` AND (r.name = ? OR r.path = ?)`

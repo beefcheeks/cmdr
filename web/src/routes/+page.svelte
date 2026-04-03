@@ -250,10 +250,10 @@
 	</div>
 {:else}
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<div class="columns-1 lg:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
 
 	<!-- Sessions -->
-	<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6 {unmatchedClaude.length > 0 ? '' : 'lg:row-span-2'}">
+	<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
 		<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500 mb-4">Sessions</h2>
 
 		{#if sessions.length === 0}
@@ -359,7 +359,7 @@
 			<div class="flex flex-col gap-5">
 				{#each commitsByRepo() as group}
 					{@const repoUnseen = group.commits.filter(c => !c.seen).length}
-					<div>
+					<div class="break-inside-avoid">
 						<div class="flex items-center justify-between mb-2">
 							<h3 class="text-xs font-semibold text-bourbon-500">{group.name}</h3>
 							{#if repoUnseen > 0}
@@ -456,13 +456,9 @@
 				{/each}
 			</div>
 		{/if}
-	</div>
 
-	<!-- Claude Instances (only if unmatched exist) -->
-	{#if unmatchedClaude.length > 0}
-		<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
-			<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500 mb-4">Claude Instances</h2>
-
+		{#if unmatchedClaude.length > 0}
+			<h3 class="text-xs font-semibold text-bourbon-500 mt-6 mb-2">Orphaned Claude Instances</h3>
 			<div class="flex flex-col gap-1.5">
 				{#each unmatchedClaude as instance}
 					<div class="flex items-center gap-3 bg-bourbon-950/30 border border-bourbon-800 rounded-lg px-5 py-3.5">
@@ -474,8 +470,8 @@
 					</div>
 				{/each}
 			</div>
-		</div>
-	{/if}
+		{/if}
+	</div>
 
 </div>
 
