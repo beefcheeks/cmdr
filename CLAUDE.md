@@ -8,57 +8,29 @@ Cmdr is a personal "commander portal" — a Go backend daemon paired with a Svel
 
 ## Build & Run Commands
 
-### Backend (Go)
+```bash
+make build     # build frontend (SPA) + backend (Go binary with embedded SPA)
+make install   # build + install binary + restart launchd service
+make dev       # Vite HMR dev server, proxies API to production daemon (:7369)
+make test      # run Go tests
+make clean     # remove build artifacts
+```
+
+### CLI
 
 ```bash
-# Build and install the daemon binary + restart launchd service
-./scripts/install.sh
-
-# Build only (no install)
-go build -o cmdr ./cmd/cmdr
-
-# Run tests
-go test ./...
-
-# Run a single package's tests
-go test ./internal/scheduler/
-
-# CLI commands
 go run ./cmd/cmdr list        # list registered tasks
 go run ./cmd/cmdr run <task>  # execute a task immediately
 go run ./cmd/cmdr status      # check daemon status
 ```
 
-### Frontend (SvelteKit)
+### Dev Workflow
 
-```bash
-bun install --cwd web   # install frontend deps
-bun run dev              # starts Go daemon (:7370) + Vite dev server, Ctrl+C stops both
-bun run build            # production build → web/build/
-bun run check            # svelte-check type validation
-```
-
-The dev daemon runs with `CMDR_ENV=dev`, which isolates it from the production launchd instance (separate socket, PID file, and port). Both can run simultaneously.
-
-### Reinstalling After Changes
-
-```bash
-./scripts/install.sh   # builds binary, stops old launchd agent, installs new one
-```
+The production daemon (via launchd) serves both the API and the embedded SPA on `:7369`. For frontend development, `make dev` starts only Vite with HMR on `:5370`, proxying `/api` calls to the production daemon. No separate dev backend needed.
 
 ### macOS Service (launchd)
 
-The daemon runs as a launchd user agent (`com.mikehu.cmdr`). `scripts/install.sh` handles building, plist installation, and service bootstrapping. Logs go to `/tmp/cmdr.out.log` and `/tmp/cmdr.err.log`.
-
-## Environment Modes
-
-The daemon uses `CMDR_ENV` to isolate prod vs dev:
-
-| | Production (launchd) | Development (`CMDR_ENV=dev`) |
-|---|---|---|
-| TCP port | `:7369` | `:7370` |
-| Socket | `/tmp/cmdr/cmdr.sock` | `/tmp/cmdr-dev/cmdr.sock` |
-| PID file | `/tmp/cmdr/cmdr.pid` | `/tmp/cmdr-dev/cmdr.pid` |
+The daemon runs as a launchd user agent (`com.mikehu.cmdr`). `make install` handles building, plist installation, and service bootstrapping. Logs go to `/tmp/cmdr.out.log` and `/tmp/cmdr.err.log`.
 
 ## Architecture
 

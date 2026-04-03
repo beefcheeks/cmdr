@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -18,24 +19,12 @@ import (
 	"github.com/mikehu/cmdr/internal/scheduler"
 )
 
-// IsDev returns true when CMDR_ENV=dev.
-func IsDev() bool {
-	return os.Getenv("CMDR_ENV") == "dev"
-}
-
 func httpAddr() string {
-	if IsDev() {
-		return "127.0.0.1:7370"
-	}
 	return "127.0.0.1:7369"
 }
 
 func runtimeDir() string {
-	name := "cmdr"
-	if IsDev() {
-		name = "cmdr-dev"
-	}
-	dir := filepath.Join(os.TempDir(), name)
+	dir := filepath.Join(os.TempDir(), "cmdr")
 	os.MkdirAll(dir, 0o700)
 	return dir
 }
@@ -47,6 +36,9 @@ func sockPath() string {
 func pidPath() string {
 	return filepath.Join(runtimeDir(), "cmdr.pid")
 }
+
+// WebFS is set by main to the embedded web/build filesystem.
+var WebFS fs.FS
 
 // Run starts the daemon in the foreground (blocking).
 func Run() error {
@@ -71,6 +63,11 @@ func Run() error {
 
 	mux := http.NewServeMux()
 	registerAPI(mux, s, bus, database)
+
+	// Serve embedded SPA for non-API routes (production)
+	if WebFS != nil {
+		mux.Handle("/", serveSPA(WebFS))
+	}
 
 	// Unix socket for CLI IPC
 	os.Remove(sockPath())
@@ -108,11 +105,7 @@ func Run() error {
 		}
 	}()
 
-	mode := "prod"
-	if IsDev() {
-		mode = "dev"
-	}
-	fmt.Printf("cmdr: daemon running [%s] (pid %d, http %s)\n", mode, os.Getpid(), addr)
+	fmt.Printf("cmdr: daemon running (pid %d, http %s)\n", os.Getpid(), addr)
 	if err := unixSrv.Serve(unixLn); err != http.ErrServerClosed {
 		return err
 	}

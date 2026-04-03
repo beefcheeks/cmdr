@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 
+	cmdr "github.com/mikehu/cmdr"
 	"github.com/mikehu/cmdr/internal/daemon"
 	"github.com/mikehu/cmdr/internal/db"
 	"github.com/mikehu/cmdr/internal/scheduler"
@@ -13,6 +15,11 @@ import (
 var version = "dev"
 
 func main() {
+	// Set embedded SPA filesystem for the daemon to serve
+	if webFS, err := fs.Sub(cmdr.WebBuildFS, "web/build"); err == nil {
+		daemon.WebFS = webFS
+	}
+
 	root := &cobra.Command{
 		Use:     "cmdr",
 		Short:   "Personal command runner and automation daemon",
