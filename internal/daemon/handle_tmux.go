@@ -3,6 +3,8 @@ package daemon
 import (
 	"encoding/json"
 	"net/http"
+	"os/exec"
+	"path/filepath"
 
 	"github.com/mikehu/cmdr/internal/tmux"
 )
@@ -43,5 +45,37 @@ func handleTmuxCreateSession() http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"name": name})
+	}
+}
+
+func handleOpenFolder() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
+			http.Error(w, `{"error":"missing path field"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Resolve to absolute and verify it's a directory
+		abs, err := filepath.Abs(req.Path)
+		if err != nil {
+			http.Error(w, `{"error":"invalid path"}`, http.StatusBadRequest)
+			return
+		}
+
+		if err := exec.Command("open", abs).Run(); err != nil {
+			http.Error(w, `{"error":"failed to open folder"}`, http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"opened": abs})
 	}
 }

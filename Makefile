@@ -27,6 +27,7 @@ go:
 # Full deploy: build → install binary → restart service
 install: build
 	@mkdir -p $(BIN_DIR) $(LAUNCH_DIR)
+	@codesign -s "cmdr" -f cmdr
 	@cp cmdr $(BIN_DIR)/cmdr
 	@echo "cmdr: installed binary to $(BIN_DIR)/cmdr"
 	@launchctl bootout "$(GUI_DOMAIN)/$(LABEL)" 2>/dev/null || true

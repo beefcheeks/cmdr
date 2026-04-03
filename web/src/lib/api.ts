@@ -89,11 +89,27 @@ export function killTmuxSession(name: string): Promise<{ killed: string }> {
 	});
 }
 
+export function focusTmuxSession(name: string): Promise<{ focused: string }> {
+	return request('/tmux/sessions/focus', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name })
+	});
+}
+
 export function switchTmuxSession(name: string): Promise<{ switched: string }> {
 	return request('/tmux/sessions/switch', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ name })
+	});
+}
+
+export function openFolder(path: string): Promise<{ opened: string }> {
+	return request('/open', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ path })
 	});
 }
 
@@ -172,7 +188,7 @@ export function getCommitFiles(repoPath: string, sha: string): Promise<CommitFil
 	return request(`/commits/files?repo=${encodeURIComponent(repoPath)}&sha=${encodeURIComponent(sha)}`);
 }
 
-export function getCommitDiff(repoPath: string, sha: string): Promise<{ diff: string; format: 'delta' | 'unified' }> {
+export function getCommitDiff(repoPath: string, sha: string): Promise<{ diff: string; format: 'delta' | 'unified'; files: string[] }> {
 	return request(`/commits/diff?repo=${encodeURIComponent(repoPath)}&sha=${encodeURIComponent(sha)}`);
 }
 

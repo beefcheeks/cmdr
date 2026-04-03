@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { ArrowRightLeft, Sparkles, X, ChevronDown, ChevronRight, ExternalLink, FileText, FilePlus, FileMinus, FileEdit, Maximize2 } from 'lucide-svelte';
+	import { ArrowRightLeft, Sparkles, X, ChevronDown, ChevronRight, ExternalLink, FileText, FilePlus, FileMinus, FileEdit, Maximize2, Focus } from 'lucide-svelte';
 	import {
 		killTmuxSession,
-		switchTmuxSession,
+		focusTmuxSession,
+		openFolder,
 		getCommits,
 		getCommitFiles,
 		getCommitDiff,
@@ -94,10 +95,6 @@
 		}, 3000);
 	}
 
-	async function switchTo(name: string) {
-		sessions = sessions.map((s) => ({ ...s, attached: s.name === name }));
-		await switchTmuxSession(name);
-	}
 
 	function shortenPath(path: string): string {
 		return path.replace(/^\/Users\/[^/]+/, '~');
@@ -145,6 +142,7 @@
 	let modalCommit: GitCommit | null = $state(null);
 	let modalDiff: string | null = $state(null);
 	let modalFormat: 'delta' | 'unified' = $state('unified');
+	let modalFiles: string[] = $state([]);
 	let modalLoading = $state(false);
 
 	async function toggleFiles(commit: GitCommit) {
@@ -176,14 +174,17 @@
 		modalCommit = commit;
 		modalDiff = null;
 		modalFormat = 'unified';
+		modalFiles = [];
 		modalLoading = true;
 		try {
 			const result = await getCommitDiff(commit.repoPath, commit.sha);
 			modalDiff = result.diff;
 			modalFormat = result.format;
+			modalFiles = result.files || [];
 		} catch {
 			modalDiff = '(failed to load diff)';
 			modalFormat = 'unified';
+			modalFiles = [];
 		}
 		modalLoading = false;
 	}
@@ -305,16 +306,26 @@
 									{#each window.panes as pane}
 										<div class="flex items-center gap-3 text-sm">
 											<span class="text-bourbon-600 font-mono text-xs">{pane.command}</span>
-											<span class="text-bourbon-500 font-mono text-xs">{shortenPath(pane.cwd)}</span>
+											<button
+											onclick={(e) => { e.stopPropagation(); openFolder(pane.cwd); }}
+											class="text-bourbon-500 font-mono text-xs hover:text-cmd-400 transition-colors cursor-pointer text-left"
+										>{shortenPath(pane.cwd)}</button>
 										</div>
 									{/each}
 								{/each}
 							</div>
 						</div>
 						<div class="flex items-start gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-							{#if !session.attached}
+							{#if session.attached}
 								<button
-									onclick={() => switchTo(session.name)}
+									onclick={() => focusTmuxSession(session.name)}
+									class="btn-chiclet-alt"
+								>
+									<Focus size={14} />
+								</button>
+							{:else}
+								<button
+									onclick={() => { focusTmuxSession(session.name); }}
 									class="btn-chiclet"
 								>
 									<ArrowRightLeft size={14} />
@@ -497,7 +508,7 @@
 		tabindex="-1"
 	>
 		<div
-			class="bg-bourbon-900 border border-bourbon-800 rounded-2xl w-[90vw] max-w-5xl max-h-[85vh] flex flex-col"
+			class="bg-bourbon-900 border border-bourbon-800 rounded-2xl w-[90vw] max-w-5xl max-h-[85vh] flex flex-col overflow-hidden"
 			onclick={(e) => e.stopPropagation()}
 		>
 			<!-- Modal header -->
@@ -528,8 +539,31 @@
 				</div>
 			</div>
 
+			<!-- File jump -->
+			{#if modalFiles.length > 1}
+				<div class="flex items-center gap-2 px-6 py-2.5 border-b border-bourbon-800 shrink-0 bg-bourbon-950/50">
+					<span class="text-xs text-bourbon-600">{modalFiles.length} files</span>
+					<select
+						onchange={(e) => {
+							const idx = (e.target as HTMLSelectElement).value;
+							if (idx !== '') {
+								document.getElementById(`file-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+								(e.target as HTMLSelectElement).value = '';
+							}
+						}}
+						class="bg-bourbon-900 border border-bourbon-700 rounded-md px-2 py-1 text-xs font-mono text-bourbon-300
+							focus:outline-none focus:border-cmd-500 cursor-pointer"
+					>
+						<option value="">Jump to file...</option>
+						{#each modalFiles as file, i}
+							<option value={i}>{file}</option>
+						{/each}
+					</select>
+				</div>
+			{/if}
+
 			<!-- Modal body -->
-			<div class="overflow-auto flex-1">
+			<div class="overflow-auto flex-1" id="diff-body">
 				{#if modalLoading}
 					<div class="flex items-center justify-center gap-2 py-12 text-bourbon-600">
 						<div class="w-4 h-4 border-2 border-bourbon-700 border-t-cmd-500 rounded-full animate-spin"></div>
@@ -537,9 +571,9 @@
 					</div>
 				{:else if modalDiff}
 					{#if modalFormat === 'delta'}
-						<pre class="text-xs leading-relaxed font-mono p-6 bg-bourbon-950 text-bourbon-400">{@html modalDiff}</pre>
+						<pre class="text-xs leading-relaxed font-mono p-6 bg-bourbon-950 text-bourbon-400 min-w-fit">{@html modalDiff}</pre>
 					{:else}
-						<pre class="text-xs leading-relaxed font-mono p-6 bg-bourbon-950">{#each modalDiff.split('\n') as line}<span class="{line.startsWith('+') && !line.startsWith('+++') ? 'text-green-400 bg-green-950/30' : line.startsWith('-') && !line.startsWith('---') ? 'text-red-400 bg-red-950/30' : line.startsWith('@@') ? 'text-cmd-400' : line.startsWith('diff ') ? 'text-bourbon-500 font-bold' : 'text-bourbon-500'}">{line}</span>
+						<pre class="text-xs leading-relaxed font-mono p-6 bg-bourbon-950 min-w-fit">{#each modalDiff.split('\n') as line}<span class="{line.startsWith('+') && !line.startsWith('+++') ? 'text-green-400 bg-green-950/30' : line.startsWith('-') && !line.startsWith('---') ? 'text-red-400 bg-red-950/30' : line.startsWith('@@') ? 'text-cmd-400' : line.startsWith('diff ') ? 'text-bourbon-500 font-bold' : 'text-bourbon-500'}">{line}</span>
 {/each}</pre>
 					{/if}
 				{/if}

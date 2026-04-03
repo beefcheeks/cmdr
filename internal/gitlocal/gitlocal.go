@@ -114,18 +114,16 @@ func Fetch(repoPath string) error {
 }
 
 // Log returns recent commits on the remote tracking branch.
-func Log(repoPath, branch string, since time.Time, limit int) ([]Commit, error) {
+// Always fetches the last `limit` commits and relies on INSERT OR IGNORE
+// for dedup. Using --since is unreliable because author dates can differ
+// from push times (rebases, late pushes).
+func Log(repoPath, branch string, limit int) ([]Commit, error) {
 	ref := fmt.Sprintf("origin/%s", branch)
 
-	args := []string{"-C", repoPath, "log", ref,
+	out, err := gitOutput(repoPath, "log", ref,
 		"--format=%H%x00%an%x00%s%x00%aI",
 		fmt.Sprintf("--max-count=%d", limit),
-	}
-	if !since.IsZero() {
-		args = append(args, "--since="+since.Format(time.RFC3339))
-	}
-
-	out, err := gitOutput(repoPath, args[2:]...)
+	)
 	if err != nil {
 		return nil, fmt.Errorf("gitlocal: log %s: %w", repoPath, err)
 	}
@@ -213,8 +211,60 @@ func CommitFiles(repoPath, sha string) ([]CommitFile, error) {
 
 // DiffResult contains the diff content and its format.
 type DiffResult struct {
-	Diff   string `json:"diff"`
-	Format string `json:"format"` // "delta" (HTML) or "unified" (plain text)
+	Diff   string   `json:"diff"`
+	Format string   `json:"format"` // "delta" (HTML) or "unified" (plain text)
+	Files  []string `json:"files"`  // list of changed file paths
+}
+
+// extractDiffFiles parses file paths from a unified diff or delta HTML output.
+func extractDiffFiles(diff, format string) []string {
+	var files []string
+	seen := make(map[string]bool)
+
+	var pattern string
+	if format == "delta" {
+		// In delta HTML, file headers appear as lines starting with "diff --git"
+		// but they're HTML-escaped. Look for the plain text before ANSI conversion.
+		// Actually, after ANSI→HTML, the diff --git lines are still in the output.
+		pattern = "diff --git a/"
+	} else {
+		pattern = "diff --git a/"
+	}
+
+	for _, line := range strings.Split(diff, "\n") {
+		// Strip HTML tags for delta format
+		clean := line
+		if format == "delta" {
+			clean = stripHTMLTags(clean)
+		}
+		if strings.HasPrefix(clean, pattern) {
+			// "diff --git a/foo/bar.js b/foo/bar.js" → "foo/bar.js"
+			parts := strings.SplitN(clean, " b/", 2)
+			if len(parts) == 2 {
+				file := strings.TrimSpace(parts[1])
+				if !seen[file] {
+					files = append(files, file)
+					seen[file] = true
+				}
+			}
+		}
+	}
+	return files
+}
+
+func stripHTMLTags(s string) string {
+	var b strings.Builder
+	inTag := false
+	for _, r := range s {
+		if r == '<' {
+			inTag = true
+		} else if r == '>' {
+			inTag = false
+		} else if !inTag {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // CommitDiff returns the diff for a commit.
@@ -230,9 +280,13 @@ func CommitDiff(repoPath, sha string) (DiffResult, error) {
 		cmd.Env = append(os.Environ(), "TERM=dumb")
 		out, err := cmd.Output()
 		if err == nil && len(out) > 0 {
+			html := AnsiToHTML(string(out))
+			files := extractDiffFiles(html, "delta")
+			html = injectFileAnchors(html, "delta")
 			return DiffResult{
-				Diff:   AnsiToHTML(string(out)),
+				Diff:   html,
 				Format: "delta",
+				Files:  files,
 			}, nil
 		}
 	}
@@ -242,7 +296,34 @@ func CommitDiff(repoPath, sha string) (DiffResult, error) {
 	if err != nil {
 		return DiffResult{}, fmt.Errorf("gitlocal: diff %s: %w", sha, err)
 	}
-	return DiffResult{Diff: out, Format: "unified"}, nil
+	diff := out
+	files := extractDiffFiles(diff, "unified")
+	return DiffResult{Diff: diff, Format: "unified", Files: files}, nil
+}
+
+// injectFileAnchors adds id attributes to diff file headers for anchor scrolling.
+func injectFileAnchors(diff, format string) string {
+	fileIdx := 0
+	files := extractDiffFiles(diff, format)
+	if len(files) == 0 {
+		return diff
+	}
+
+	var result strings.Builder
+	for _, line := range strings.Split(diff, "\n") {
+		clean := line
+		if format == "delta" {
+			clean = stripHTMLTags(clean)
+		}
+		if strings.HasPrefix(clean, "diff --git a/") && fileIdx < len(files) {
+			anchor := fmt.Sprintf(`<span id="file-%d"></span>`, fileIdx)
+			result.WriteString(anchor)
+			fileIdx++
+		}
+		result.WriteString(line)
+		result.WriteByte('\n')
+	}
+	return result.String()
 }
 
 // --- helpers ---

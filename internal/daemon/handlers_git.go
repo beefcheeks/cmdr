@@ -151,7 +151,7 @@ func handleAddRepo(db *sql.DB) http.HandlerFunc {
 		log.Printf("cmdr: git: added repo %s at %s (id=%d)", body.Name, body.Path, id)
 
 		// Kick off initial sync in background
-		go tasks.SyncOne(db, int(id), body.Path, body.DefaultBranch, nil)
+		go tasks.SyncOne(db, int(id), body.Path, body.DefaultBranch)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"id": id, "name": body.Name})
