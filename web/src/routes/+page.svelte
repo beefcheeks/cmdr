@@ -11,10 +11,14 @@
 		getCommitFiles,
 		getCommitDiff,
 		markCommitsSeen,
+		getBrewOutdated,
+		brewUpgrade,
 		type TmuxSession,
 		type ClaudeSession,
 		type GitCommit,
-		type CommitFile
+		type CommitFile,
+		type BrewFormula,
+		type BrewOutdated
 	} from '$lib/api';
 	import { events } from '$lib/events';
 
@@ -25,6 +29,9 @@
 	let sseConnected = $state(false);
 	let sessionsLoaded = $state(false);
 	let commitsLoaded = $state(false);
+	let brewData: BrewOutdated | null = $state(null);
+	let brewLoaded = $state(false);
+	let brewUpgrading: string | null = $state(null);
 
 	const now = new Date();
 	const hour = now.getHours();
@@ -36,10 +43,12 @@
 	});
 
 	onMount(async () => {
-		try {
-			commits = await getCommits();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to connect to daemon';
+		const [commitResult] = await Promise.allSettled([
+			getCommits().then(c => { commits = c; }),
+			getBrewOutdated().then(b => { brewData = b; }).finally(() => { brewLoaded = true; })
+		]);
+		if (commitResult.status === 'rejected') {
+			error = commitResult.reason instanceof Error ? commitResult.reason.message : 'Failed to connect to daemon';
 		}
 		commitsLoaded = true;
 	});
@@ -259,6 +268,19 @@
 		renamed: 'text-cmd-400'
 	};
 
+	// --- Brew ---
+	let brewTotal = $derived((brewData?.formulae.length ?? 0) + (brewData?.casks.length ?? 0));
+
+	async function handleBrewUpgrade(formula?: string) {
+		brewUpgrading = formula ?? 'all';
+		try {
+			await brewUpgrade(formula);
+			// Refresh the list after upgrade
+			brewData = await getBrewOutdated();
+		} catch { /* silent */ }
+		brewUpgrading = null;
+	}
+
 </script>
 
 <!-- Greeting -->
@@ -282,6 +304,51 @@
 {:else}
 
 <div class="columns-1 lg:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+
+	<!-- Brew Updates (only when actionable) -->
+	{#if brewLoaded && brewTotal > 0}
+		<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
+			<div class="flex items-center gap-4 mb-4">
+				<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">Homebrew</h2>
+				<span class="text-xs font-medium text-run-400 bg-run-700/30 px-2.5 py-0.5 rounded-full">
+					{brewTotal} update{brewTotal !== 1 ? 's' : ''}
+				</span>
+			</div>
+			<div class="flex flex-col gap-1">
+				{#each [...(brewData?.formulae ?? []), ...(brewData?.casks ?? [])] as pkg}
+					<div class="group flex items-center gap-3 text-sm py-1">
+						<span class="text-bourbon-100 font-mono text-xs">{pkg.name}</span>
+						<span class="text-bourbon-600 font-mono text-[10px]">{pkg.installed_versions[0]}</span>
+						<span class="text-bourbon-700 text-[10px]">→</span>
+						<span class="text-run-400 font-mono text-[10px]">{pkg.current_version}</span>
+						{#if brewUpgrading === pkg.name}
+							<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin ml-auto"></div>
+						{:else}
+							<button
+								onclick={() => handleBrewUpgrade(pkg.name)}
+								class="ml-auto text-[10px] font-mono text-bourbon-700 hover:text-run-400 transition-colors cursor-pointer opacity-0 group-hover:opacity-100"
+							>upgrade</button>
+						{/if}
+					</div>
+				{/each}
+			</div>
+			{#if brewTotal > 1}
+				<div class="mt-3 pt-3 border-t border-bourbon-800">
+					{#if brewUpgrading === 'all'}
+						<div class="flex items-center gap-2 text-bourbon-600">
+							<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
+							<span class="text-[10px] font-mono">upgrading all</span>
+						</div>
+					{:else}
+						<button
+							onclick={() => handleBrewUpgrade()}
+							class="text-[10px] font-mono text-bourbon-600 hover:text-run-400 transition-colors cursor-pointer"
+						>upgrade all ({brewTotal})</button>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	{/if}
 
 	<!-- Sessions -->
 	<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">

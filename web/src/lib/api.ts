@@ -239,3 +239,29 @@ export interface ActivityResponse {
 export function getActivity(resolution: '5s' | '1m' | '5m' = '1m'): Promise<ActivityResponse> {
 	return request(`/analytics/activity?resolution=${resolution}`);
 }
+
+// Brew
+
+export interface BrewFormula {
+	name: string;
+	installed_versions: string[];
+	current_version: string;
+	pinned: boolean;
+}
+
+export interface BrewOutdated {
+	formulae: BrewFormula[];
+	casks: BrewFormula[];
+}
+
+export function getBrewOutdated(): Promise<BrewOutdated> {
+	return request('/brew/outdated');
+}
+
+export function brewUpgrade(formula?: string): Promise<{ status: string; output: string }> {
+	return request('/brew/upgrade', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ formula: formula ?? '' })
+	});
+}

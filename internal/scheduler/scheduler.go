@@ -53,6 +53,12 @@ func (s *Scheduler) register(db *sql.DB) {
 			Schedule:    "0 0 3 * * *", // daily at 3am
 			Fn:          tasks.PruneCommits(db),
 		},
+		{
+			Name:        "brew-update",
+			Description: "Refresh Homebrew formula index",
+			Schedule:    "0 0 8 * * *", // daily at 8am
+			Fn:          tasks.BrewUpdate,
+		},
 	}
 }
 

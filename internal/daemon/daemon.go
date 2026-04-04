@@ -213,6 +213,10 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 
 	// Analytics
 	mux.HandleFunc("/api/analytics/activity", handleActivityAnalytics(database))
+
+	// Brew
+	mux.HandleFunc("/api/brew/outdated", handleBrewOutdated())
+	mux.HandleFunc("/api/brew/upgrade", handleBrewUpgrade())
 }
 
 func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {
