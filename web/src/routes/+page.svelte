@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { ArrowRightLeft, Sparkles, X, ChevronDown, ChevronRight, ExternalLink, FileText, FilePlus, FileMinus, FileEdit, Maximize2, Focus } from 'lucide-svelte';
+	import ActivityChart from '$lib/components/ActivityChart.svelte';
 	import {
 		killTmuxSession,
 		focusTmuxSession,
+		switchTmuxSession,
 		openFolder,
 		getCommits,
 		getCommitFiles,
@@ -262,6 +264,9 @@
 		{dateStr}
 		&middot; {sessions.length} session{sessions.length !== 1 ? 's' : ''}
 		&middot; {claudeSessions.length} claude instance{claudeSessions.length !== 1 ? 's' : ''}
+		{#if unseenCount > 0}
+			&middot; {unseenCount} unseen commit{unseenCount !== 1 ? 's' : ''}
+		{/if}
 	</p>
 </div>
 
@@ -277,6 +282,11 @@
 	<!-- Sessions -->
 	<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
 		<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500 mb-4">Sessions</h2>
+
+		<!-- Activity chart -->
+		<div class="mb-4">
+			<ActivityChart />
+		</div>
 
 		{#if sessions.length === 0}
 			<p class="text-bourbon-600 text-sm">No tmux sessions running.</p>
@@ -308,7 +318,7 @@
 										working: 'text-green-400 bg-green-900/30',
 										waiting: 'text-run-400 bg-run-700/30 animate-pulse',
 										idle: 'text-bourbon-500 bg-bourbon-800/30',
-										unknown: 'text-cmd-400 bg-cmd-700/30'
+										unknown: 'text-cmd-400 bg-cmd-700/30 animate-pulse'
 									}[claude.status]}
 									{@const statusLabel = {
 										working: 'claude · working',
@@ -327,14 +337,14 @@
 									{#each window.panes as pane}
 										{@const paneClause = claudeByTarget.get(paneTarget(session.name, window.index, pane.index))}
 										<div class="flex items-center gap-3 text-sm min-w-0">
-											<span class="text-bourbon-600 font-mono text-xs shrink-0">{pane.command}</span>
+											<span class="font-mono text-xs shrink-0 {pane.active ? 'text-run-600' : 'text-bourbon-600'}">{pane.command}</span>
 											{#if paneClause}
 												{@const st = paneClause.status}
 												<span class="inline-flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded whitespace-nowrap shrink-0
 													{st === 'working' ? 'text-green-400 bg-green-900/30' :
 													 st === 'waiting' ? 'text-run-400 bg-run-700/30 animate-pulse' :
 													 st === 'idle' ? 'text-bourbon-500 bg-bourbon-800/30' :
-													 'text-cmd-400 bg-cmd-700/30'}">
+													 'text-cmd-400 bg-cmd-700/30 animate-pulse'}">
 													<span class="w-1.5 h-1.5 rounded-full
 														{st === 'working' ? 'bg-green-500' :
 														 st === 'waiting' ? 'bg-run-500' :
@@ -363,7 +373,10 @@
 								</button>
 							{:else}
 								<button
-									onclick={() => { focusTmuxSession(session.name); }}
+									onclick={() => {
+										switchTmuxSession(session.name);
+										sessions = sessions.map(s => ({ ...s, attached: s.name === session.name }));
+									}}
 									class="btn-chiclet"
 								>
 									<ArrowRightLeft size={14} />

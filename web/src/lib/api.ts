@@ -36,6 +36,7 @@ export function runTask(name: string): Promise<{ output: string }> {
 
 export interface TmuxPane {
 	index: number;
+	active: boolean;
 	cwd: string;
 	command: string;
 }
@@ -203,4 +204,37 @@ export function markCommitsSeen(ids: number[]): Promise<{ marked: number }> {
 
 export function syncRepos(): Promise<{ status: string }> {
 	return request('/sync', { method: 'POST' });
+}
+
+// Analytics
+
+export interface ActivityBucket {
+	bucket: number;
+	samples: number;
+	nvim: number;
+	claude: number;
+	other: number;
+	inactive: number;
+	claudeTotal: number;
+	claudeWorking: number;
+	claudeWaiting: number;
+	claudeIdle: number;
+	claudeUnknown: number;
+}
+
+export interface ActivityDay {
+	date: string;
+	currentBucket?: number;
+	buckets: ActivityBucket[];
+}
+
+export interface ActivityResponse {
+	resolution: string;
+	samplesPerBar: number;
+	today: ActivityDay;
+	yesterday: ActivityDay;
+}
+
+export function getActivity(resolution: '5s' | '1m' | '5m' = '1m'): Promise<ActivityResponse> {
+	return request(`/analytics/activity?resolution=${resolution}`);
 }

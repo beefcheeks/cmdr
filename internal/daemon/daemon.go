@@ -61,7 +61,7 @@ func Run() error {
 	defer s.Stop()
 
 	bus := NewEventBus()
-	stopPoller := startPoller(bus, s)
+	stopPoller := startPoller(bus, s, database)
 	defer stopPoller()
 
 	mux := http.NewServeMux()
@@ -210,6 +210,9 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/commits/files", handleCommitFiles(database))
 	mux.HandleFunc("/api/commits/seen", handleMarkSeen(database))
 	mux.HandleFunc("/api/sync", handleSyncRepos(database))
+
+	// Analytics
+	mux.HandleFunc("/api/analytics/activity", handleActivityAnalytics(database))
 }
 
 func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -15,31 +16,43 @@ import (
 )
 
 // startPoller runs server-side polling and publishes events to the bus.
-func startPoller(bus *EventBus, s *scheduler.Scheduler) func() {
+func startPoller(bus *EventBus, s *scheduler.Scheduler, db *sql.DB) func() {
 	done := make(chan struct{})
 
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
 
-		// Publish initial state immediately
-		publishStatus(bus, s)
-		publishTmux(bus)
-		publishClaude(bus)
+		// Run one tick immediately
+		pollTick(bus, s, db)
 
 		for {
 			select {
 			case <-done:
 				return
 			case <-ticker.C:
-				publishStatus(bus, s)
-				publishTmux(bus)
-				publishClaude(bus)
+				pollTick(bus, s, db)
 			}
 		}
 	}()
 
 	return func() { close(done) }
+}
+
+// pollTick runs a single polling cycle: fetch tmux once, publish all events, record analytics.
+func pollTick(bus *EventBus, s *scheduler.Scheduler, db *sql.DB) {
+	publishStatus(bus, s)
+
+	tmuxSessions, err := tmux.ListSessions()
+	if err != nil {
+		log.Printf("cmdr: poller: tmux list error: %v", err)
+		tmuxSessions = []tmux.Session{}
+	}
+	bus.Publish(Event{Type: "tmux:sessions", Data: tmuxSessions})
+
+	claudeSessions := enrichAndPublishClaude(bus, tmuxSessions)
+
+	recordActivity(db, tmuxSessions, claudeSessions, time.Now())
 }
 
 func publishStatus(bus *EventBus, s *scheduler.Scheduler) {
@@ -54,50 +67,32 @@ func publishStatus(bus *EventBus, s *scheduler.Scheduler) {
 	})
 }
 
-func publishTmux(bus *EventBus) {
-	sessions, err := tmux.ListSessions()
-	if err != nil {
-		log.Printf("cmdr: poller: tmux list error: %v", err)
-		return
-	}
-	bus.Publish(Event{
-		Type: "tmux:sessions",
-		Data: sessions,
-	})
-}
-
-func publishClaude(bus *EventBus) {
+// enrichAndPublishClaude matches Claude sessions to tmux panes and publishes them.
+// Returns the enriched sessions for use by analytics.
+func enrichAndPublishClaude(bus *EventBus, tmuxSessions []tmux.Session) []claude.Session {
 	sessions, err := claude.ListSessions()
 	if err != nil {
 		log.Printf("cmdr: poller: claude list error: %v", err)
-		return
+		return nil
 	}
 
-	// Find Claude panes in tmux and match by PID ancestry.
-	// Each Claude session has a PID; the pane has a shell PID.
-	// Claude's PPID == pane shell PID → exact match.
-	tmuxSessions, _ := tmux.ListSessions()
 	claudePanes := collectClaudePanes(tmuxSessions)
 	ppidMap := getParentPIDs()
 
-	// Build set of pane shell PIDs for fast lookup
 	shellPIDs := make(map[int]*claudePane)
 	for i := range claudePanes {
 		shellPIDs[claudePanes[i].shellPID] = &claudePanes[i]
 	}
 
 	for i := range sessions {
-		// Walk up the process tree from Claude's PID to find the pane shell
 		if cp := findAncestorPane(sessions[i].PID, ppidMap, shellPIDs); cp != nil {
 			sessions[i].TmuxTarget = cp.target
 			sessions[i].Status = claude.PaneStatus(cp.target)
 		}
 	}
 
-	bus.Publish(Event{
-		Type: "claude:sessions",
-		Data: sessions,
-	})
+	bus.Publish(Event{Type: "claude:sessions", Data: sessions})
+	return sessions
 }
 
 type claudePane struct {

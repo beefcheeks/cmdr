@@ -73,6 +73,18 @@ func migrate(d *sql.DB) error {
 		CREATE INDEX IF NOT EXISTS idx_commits_repo_date ON commits(repo_id, committed_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_commits_seen ON commits(seen, committed_at DESC);
 
+		CREATE TABLE IF NOT EXISTS activity_buckets (
+			slot            INTEGER NOT NULL,
+			bucket          INTEGER NOT NULL,
+			active_tool     TEXT NOT NULL DEFAULT '',
+			claude_total    INTEGER NOT NULL DEFAULT 0,
+			claude_working  INTEGER NOT NULL DEFAULT 0,
+			claude_waiting  INTEGER NOT NULL DEFAULT 0,
+			claude_idle     INTEGER NOT NULL DEFAULT 0,
+			claude_unknown  INTEGER NOT NULL DEFAULT 0,
+			recorded_at     DATETIME,
+			PRIMARY KEY (slot, bucket)
+		);
 	`)
 	return err
 }

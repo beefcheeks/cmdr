@@ -12,6 +12,7 @@ import (
 type Pane struct {
 	Index   int    `json:"index"`
 	PID     int    `json:"pid"`
+	Active  bool   `json:"active"`
 	CWD     string `json:"cwd"`
 	Command string `json:"command"`
 }
@@ -40,7 +41,8 @@ const listFormat = "#{session_name}" + fieldSep +
 	"#{pane_index}" + fieldSep +
 	"#{pane_pid}" + fieldSep +
 	"#{pane_current_path}" + fieldSep +
-	"#{pane_current_command}"
+	"#{pane_current_command}" + fieldSep +
+	"#{pane_active}"
 
 // socketPath returns the default tmux socket path for the current user.
 // Uses /private/tmp on macOS (where /tmp is a symlink).
@@ -80,7 +82,7 @@ func parsePaneOutput(output string) []Session {
 
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Split(line, fieldSep)
-		if len(fields) < 9 {
+		if len(fields) < 10 {
 			continue
 		}
 
@@ -93,6 +95,7 @@ func parsePaneOutput(output string) []Session {
 		panePID, _ := strconv.Atoi(fields[6])
 		paneCWD := fields[7]
 		paneCmd := fields[8]
+		paneActive := fields[9] == "1"
 
 		// Session
 		sess, exists := sessionMap[sessName]
@@ -111,8 +114,8 @@ func parsePaneOutput(output string) []Session {
 			sess.Windows = append(sess.Windows, *win)
 		}
 
-		// Pane
-		pane := Pane{Index: paneIdx, PID: panePID, CWD: paneCWD, Command: paneCmd}
+		// Pane — active means it's the focused pane in the active window
+		pane := Pane{Index: paneIdx, PID: panePID, Active: winActive && paneActive, CWD: paneCWD, Command: paneCmd}
 
 		// Find and update the window in the session (since we appended a copy)
 		for i := range sess.Windows {
