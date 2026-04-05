@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { ArrowRightLeft, Sparkles, X, ChevronDown, ChevronRight, ExternalLink, FileText, FilePlus, FileMinus, FileEdit, Maximize2, Focus } from 'lucide-svelte';
+	import { ArrowRightLeft, Sparkles, X, ChevronDown, ChevronRight, ExternalLink, FileText, FilePlus, FileMinus, FilePenLine, Maximize2, Focus } from 'lucide-svelte';
 	import ActivityChart from '$lib/components/ActivityChart.svelte';
 	import {
 		killTmuxSession,
@@ -17,7 +17,6 @@
 		type ClaudeSession,
 		type GitCommit,
 		type CommitFile,
-		type BrewFormula,
 		type BrewOutdated
 	} from '$lib/api';
 	import { events } from '$lib/events';
@@ -29,7 +28,7 @@
 	let sseConnected = $state(false);
 	let sessionsLoaded = $state(false);
 	let commitsLoaded = $state(false);
-	let brewData: BrewOutdated | null = $state(null);
+	let brewData = $state<BrewOutdated | null>(null);
 	let brewLoaded = $state(false);
 	let brewUpgrading: string | null = $state(null);
 
@@ -113,15 +112,6 @@
 
 	function shortenPath(path: string): string {
 		return path.replace(/^\/Users\/[^/]+/, '~');
-	}
-
-	function truncatePath(path: string, maxLen = 25): string {
-		const short = shortenPath(path);
-		if (short.length <= maxLen) return short;
-		const parts = short.split('/');
-		// Keep last 2 segments with ellipsis prefix
-		if (parts.length > 2) return '…/' + parts.slice(-2).join('/');
-		return '…' + short.slice(-maxLen + 1);
 	}
 
 	// Map Claude sessions by their tmux pane target (e.g. "stasher:1.3")
@@ -256,7 +246,7 @@
 
 	const fileStatusIcon: Record<string, typeof FileText> = {
 		added: FilePlus,
-		modified: FileEdit,
+		modified: FilePenLine,
 		removed: FileMinus,
 		renamed: FileText
 	};
@@ -269,7 +259,7 @@
 	};
 
 	// --- Brew ---
-	let brewTotal = $derived((brewData?.formulae.length ?? 0) + (brewData?.casks.length ?? 0));
+	let brewTotal: number = $derived(brewData ? brewData.formulae.length + brewData.casks.length : 0);
 
 	async function handleBrewUpgrade(formula?: string) {
 		brewUpgrading = formula ?? 'all';
@@ -303,7 +293,7 @@
 	</div>
 {:else}
 
-<div class="columns-1 lg:columns-2 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
+<div class="columns-1 lg:columns-2 gap-4 *:mb-4 *:break-inside-avoid">
 
 	<!-- Brew Updates (only when actionable) -->
 	{#if brewLoaded && brewTotal > 0}

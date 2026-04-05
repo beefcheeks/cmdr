@@ -4,7 +4,7 @@
 	import { getActivity, type ActivityBucket, type ActivityResponse } from '$lib/api';
 	import { events } from '$lib/events';
 
-	let data: ActivityResponse | null = $state(null);
+	let data = $state<ActivityResponse | null>(null);
 	let containerWidth = $state(600);
 	let hoverIdx: number | null = $state(null);
 	let activeView: 'tools' | 'claude' = $state('tools');
@@ -21,25 +21,26 @@
 	};
 
 	let unsub: (() => void) | null = null;
+	let ro: ResizeObserver | null = null;
 
-	onMount(async () => {
+	onMount(() => {
 		// Seed from REST
-		try { data = await getActivity('5m'); } catch { /* silent */ }
+		getActivity('5m').then((d) => { data = d; }).catch(() => {});
 
 		// Subscribe to SSE deltas
-		unsub = events.on('analytics:activity', (update) => {
+		unsub = events.on('analytics:activity', (update: ActivityResponse) => {
 			data = update;
 		});
 
-		const ro = new ResizeObserver((entries) => {
+		ro = new ResizeObserver((entries) => {
 			containerWidth = entries[0].contentRect.width;
 		});
 		ro.observe(container);
-		return () => ro.disconnect();
 	});
 
 	onDestroy(() => {
 		if (unsub) unsub();
+		if (ro) ro.disconnect();
 	});
 
 	let barWidth = $derived(Math.max(1, containerWidth / BARS_PER_DAY));
@@ -86,7 +87,10 @@
 	// Height proportional to count / max total
 
 	let maxClaudeTotal = $derived(
-		Math.max(1, ...(data?.today.buckets.map(b => b.claudeTotal) ?? [1]), ...(data?.yesterday.buckets.map(b => b.claudeTotal) ?? [1]))
+		Math.max(1,
+			...(data ? data.today.buckets.map((b: ActivityBucket) => b.claudeTotal) : [1]),
+			...(data ? data.yesterday.buckets.map((b: ActivityBucket) => b.claudeTotal) : [1])
+		)
 	);
 
 	function toClaudeSegments(buckets: ActivityBucket[]): { x: number; w: number; layers: { color: string; heightPct: number }[] }[] {
@@ -114,8 +118,8 @@
 	let todayClaudeSegs = $derived(data ? toClaudeSegments(data.today.buckets) : []);
 	let yesterdayClaudeSegs = $derived(data ? toClaudeSegments(data.yesterday.buckets) : []);
 
-	let nowX = $derived(data?.today.currentBucket != null ? xScale(data.today.currentBucket) : null);
-	let todayMap = $derived(new Map(data?.today.buckets.map((b) => [b.bucket, b]) ?? []));
+	let nowX = $derived(data && data.today.currentBucket != null ? xScale(data.today.currentBucket) : null);
+	let todayMap: Map<number, ActivityBucket> = $derived(new Map(data ? data.today.buckets.map((b): [number, ActivityBucket] => [b.bucket, b]) : []));
 
 	function handleMouseMove(e: MouseEvent) {
 		const rect = (e.currentTarget as Element).getBoundingClientRect();
@@ -133,7 +137,7 @@
 		return `${h12}:${String(m).padStart(2, '0')}${period}`;
 	}
 
-	let hoverBucket = $derived.by(() => hoverIdx !== null ? todayMap.get(hoverIdx) ?? null : null);
+	let hoverBucket: ActivityBucket | null = $derived.by(() => hoverIdx !== null ? todayMap.get(hoverIdx) ?? null : null);
 
 	let todayStats = $derived.by(() => {
 		if (!data) return { nvim: 0, claude: 0, other: 0 };

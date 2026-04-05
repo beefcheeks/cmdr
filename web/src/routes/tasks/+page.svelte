@@ -82,7 +82,7 @@
 				<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">Output</h2>
 				<span class="text-xs font-medium text-cmd-400 bg-cmd-700/40 px-2.5 py-0.5 rounded-full">{result.task}</span>
 			</div>
-			<pre class="text-sm whitespace-pre-wrap break-words text-bourbon-300 font-mono bg-bourbon-950 rounded-lg p-4">{result.output}</pre>
+			<pre class="text-sm whitespace-pre-wrap wrap-break-word text-bourbon-300 font-mono bg-bourbon-950 rounded-lg p-4">{result.output}</pre>
 		</div>
 	{/if}
 </div>
