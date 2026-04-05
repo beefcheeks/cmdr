@@ -210,7 +210,8 @@ func handleListCommits(db *sql.DB) http.HandlerFunc {
 		// Use a windowed query to get N most recent commits per repo
 		query := `
 			SELECT c.id, c.sha, c.author, c.message, c.committed_at, c.url, c.seen, c.flagged,
-			       r.name, r.path
+			       r.name, r.path,
+			       (SELECT COUNT(*) FROM review_comments rc WHERE rc.repo_path = r.path AND rc.sha = c.sha) as review_count
 			FROM commits c
 			JOIN repos r ON r.id = c.repo_id
 			WHERE c.id IN (
@@ -248,23 +249,24 @@ func handleListCommits(db *sql.DB) http.HandlerFunc {
 		defer rows.Close()
 
 		type commit struct {
-			ID          int    `json:"id"`
-			SHA         string `json:"sha"`
-			Author      string `json:"author"`
-			Message     string `json:"message"`
-			CommittedAt string `json:"committedAt"`
-			URL         string `json:"url"`
-			Seen        bool   `json:"seen"`
-			Flagged     bool   `json:"flagged"`
-			RepoName    string `json:"repoName"`
-			RepoPath    string `json:"repoPath"`
+			ID            int    `json:"id"`
+			SHA           string `json:"sha"`
+			Author        string `json:"author"`
+			Message       string `json:"message"`
+			CommittedAt   string `json:"committedAt"`
+			URL           string `json:"url"`
+			Seen          bool   `json:"seen"`
+			Flagged       bool   `json:"flagged"`
+			RepoName      string `json:"repoName"`
+			RepoPath      string `json:"repoPath"`
+			ReviewCount   int    `json:"reviewCount"`
 		}
 
 		var commits []commit
 		for rows.Next() {
 			var c commit
 			if err := rows.Scan(&c.ID, &c.SHA, &c.Author, &c.Message, &c.CommittedAt, &c.URL,
-				&c.Seen, &c.Flagged, &c.RepoName, &c.RepoPath); err != nil {
+				&c.Seen, &c.Flagged, &c.RepoName, &c.RepoPath, &c.ReviewCount); err != nil {
 				continue
 			}
 			commits = append(commits, c)

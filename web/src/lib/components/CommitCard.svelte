@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ChevronDown, ChevronRight, ExternalLink, FileText, FilePlus, FileMinus, FilePenLine, Maximize2, Flag } from 'lucide-svelte';
+	import { ChevronDown, ChevronRight, ExternalLink, FileText, FilePlus, FileMinus, FilePenLine, Maximize2, Flag, MessageSquarePlus } from 'lucide-svelte';
 	import {
 		getCommitFiles,
 		getCommitDiff,
@@ -23,8 +23,9 @@
 	let showSeen = $state(false);
 
 	let unseenCount = $derived(commits.filter(c => !c.seen).length);
-	let flaggedCount = $derived(commits.filter(c => c.flagged).length);
-	let seenCount = $derived(commits.filter(c => c.seen && !c.flagged).length);
+	let inReviewCount = $derived(commits.filter(c => c.reviewCount > 0).length);
+	let flaggedCount = $derived(commits.filter(c => c.flagged && c.reviewCount === 0).length);
+	let seenCount = $derived(commits.filter(c => c.seen && !c.flagged && c.reviewCount === 0).length);
 
 	function groupByRepo(list: GitCommit[]): { name: string; path: string; commits: GitCommit[] }[] {
 		const groups: { name: string; path: string; commits: GitCommit[] }[] = [];
@@ -42,8 +43,9 @@
 	}
 
 	let unseenByRepo = $derived(groupByRepo(commits.filter(c => !c.seen)));
-	let flaggedByRepo = $derived(groupByRepo(commits.filter(c => c.flagged)));
-	let seenByRepo = $derived(groupByRepo(commits.filter(c => c.seen && !c.flagged)));
+	let inReviewByRepo = $derived(groupByRepo(commits.filter(c => c.reviewCount > 0)));
+	let flaggedByRepo = $derived(groupByRepo(commits.filter(c => c.flagged && c.reviewCount === 0)));
+	let seenByRepo = $derived(groupByRepo(commits.filter(c => c.seen && !c.flagged && c.reviewCount === 0)));
 
 	async function toggleFiles(commit: GitCommit) {
 		const key = `${commit.repoPath}:${commit.sha}`;
@@ -144,6 +146,7 @@
 					</span>
 					<span class="font-mono text-xs text-cmd-400 shrink-0">{shortSha(commit.sha)}</span>
 					{#if commit.flagged}<span class="text-run-400 shrink-0"><Flag size={12} fill="currentColor" /></span>{/if}
+					{#if commit.reviewCount > 0}<span class="text-cmd-400 shrink-0"><MessageSquarePlus size={12} /></span>{/if}
 					<span class="text-sm text-bourbon-200 truncate flex-1">{firstLine(commit.message)}</span>
 					<span class="text-xs text-bourbon-700 shrink-0">{timeAgo(commit.committedAt)}</span>
 				</button>
@@ -242,11 +245,29 @@
 			<p class="text-bourbon-600 text-sm">All caught up.</p>
 		{/if}
 
+		<!-- In review -->
+		{#if inReviewCount > 0}
+			<div class="mt-4 pt-3 border-t border-bourbon-800">
+				<h3 class="flex items-center gap-2 text-xs font-semibold text-cmd-400 mb-3">
+					<MessageSquarePlus size={12} />
+					{inReviewCount} in review
+				</h3>
+				<div class="flex flex-col gap-5">
+					{#each inReviewByRepo as group}
+						<div class="break-inside-avoid">
+							<h3 class="text-xs font-semibold text-bourbon-500 mb-2">{group.name}</h3>
+							{@render commitList(group.commits)}
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<!-- Flagged commits -->
 		{#if flaggedCount > 0}
 			<div class="mt-4 pt-3 border-t border-bourbon-800">
 				<h3 class="flex items-center gap-2 text-xs font-semibold text-run-400 mb-3">
-					<Flag size={12} />
+					<Flag size={12} fill="currentColor" />
 					{flaggedCount} flagged
 				</h3>
 				<div class="flex flex-col gap-5">

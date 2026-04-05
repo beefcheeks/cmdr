@@ -3,7 +3,6 @@ package daemon
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mikehu/cmdr/internal/gitlocal"
+	"github.com/mikehu/cmdr/internal/prompts"
 	"github.com/mikehu/cmdr/internal/tasks"
 )
 
@@ -177,8 +177,38 @@ func handleSubmitReview(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			diffText = stripHTML(diffText)
 		}
 
-		// Build prompt
-		prompt := buildReviewPrompt(repoName, body.SHA, author, committedAt, message, diffText, annotations)
+		// Build prompt from template
+		diffLines := strings.Split(diffText, "\n")
+		var promptAnnotations []prompts.ReviewAnnotation
+		for _, a := range annotations {
+			var ctx strings.Builder
+			for i := a.lineStart - 1; i < a.lineEnd && i < len(diffLines); i++ {
+				if i >= 0 {
+					ctx.WriteString(diffLines[i])
+					ctx.WriteByte('\n')
+				}
+			}
+			promptAnnotations = append(promptAnnotations, prompts.ReviewAnnotation{
+				LineStart: a.lineStart,
+				LineEnd:   a.lineEnd,
+				Context:   strings.TrimRight(ctx.String(), "\n"),
+				Comment:   a.comment,
+			})
+		}
+
+		prompt, err := prompts.Review(prompts.ReviewData{
+			RepoName:    repoName,
+			SHA:         body.SHA,
+			Author:      author,
+			Date:        committedAt,
+			Message:     message,
+			Diff:        diffText,
+			Annotations: promptAnnotations,
+		})
+		if err != nil {
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
 
 		// Create task
 		res, err := db.Exec(`
@@ -209,7 +239,7 @@ func runClaudeReview(db *sql.DB, bus *EventBus, taskID int, repoPath, sha, promp
 
 	log.Printf("cmdr: claude review started (task %d, %s %s)", taskID, repoPath, sha[:7])
 
-	result, err := tasks.Claude(prompt)
+	result, err := tasks.Claude(prompt, repoPath)
 
 	now := time.Now().Format(time.RFC3339)
 	if err != nil {
@@ -237,43 +267,6 @@ func runClaudeReview(db *sql.DB, bus *EventBus, taskID int, repoPath, sha, promp
 type reviewAnnotation struct {
 	lineStart, lineEnd int
 	comment            string
-}
-
-func buildReviewPrompt(repoName, sha, author, date, message, diff string, annotations []reviewAnnotation) string {
-	diffLines := strings.Split(diff, "\n")
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are reviewing a commit in the %s repository.\n\n", repoName)
-	fmt.Fprintf(&b, "## Commit\n")
-	fmt.Fprintf(&b, "- SHA: %s\n", sha)
-	fmt.Fprintf(&b, "- Author: %s\n", author)
-	fmt.Fprintf(&b, "- Date: %s\n", date)
-	fmt.Fprintf(&b, "- Message: %s\n\n", message)
-	fmt.Fprintf(&b, "## Full Diff\n```diff\n%s\n```\n\n", diff)
-
-	if len(annotations) > 0 {
-		fmt.Fprintf(&b, "## Reviewer's Annotations\n")
-		fmt.Fprintf(&b, "The reviewer has commented on specific lines of the diff above (1-indexed).\n\n")
-		for _, a := range annotations {
-			fmt.Fprintf(&b, "### Lines %d–%d\n```\n", a.lineStart, a.lineEnd)
-			for i := a.lineStart - 1; i < a.lineEnd && i < len(diffLines); i++ {
-				if i >= 0 {
-					fmt.Fprintf(&b, "%s\n", diffLines[i])
-				}
-			}
-			fmt.Fprintf(&b, "```\n> %s\n\n", a.comment)
-		}
-	}
-
-	fmt.Fprintf(&b, "## Instructions\n")
-	fmt.Fprintf(&b, "Address each annotation with specific, actionable feedback. For each:\n")
-	fmt.Fprintf(&b, "1. Is the concern valid?\n")
-	fmt.Fprintf(&b, "2. If there's an issue, suggest a concrete fix\n")
-	fmt.Fprintf(&b, "3. Reference specific lines from the diff\n\n")
-	fmt.Fprintf(&b, "Also flag any additional issues in the diff not covered by the annotations.\n")
-	fmt.Fprintf(&b, "Keep your response concise and technical. Use markdown formatting.\n")
-
-	return b.String()
 }
 
 var htmlTagRe = regexp.MustCompile(`<[^>]+>`)

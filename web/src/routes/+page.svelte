@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { getCommits, type TmuxSession, type ClaudeSession, type GitCommit } from '$lib/api';
+	import { getCommits, toggleCommitFlag, type TmuxSession, type ClaudeSession, type GitCommit } from '$lib/api';
 	import { events } from '$lib/events';
 
 	import BrewCard from '$lib/components/BrewCard.svelte';
 	import SessionCard from '$lib/components/SessionCard.svelte';
 	import CommitCard from '$lib/components/CommitCard.svelte';
+	import ClaudeInboxCard from '$lib/components/ClaudeInboxCard.svelte';
 	import DiffModal from '$lib/components/DiffModal.svelte';
+	import ReviewResultModal from '$lib/components/ReviewResultModal.svelte';
 
 	let sessions: TmuxSession[] = $state([]);
 	let claudeSessions: ClaudeSession[] = $state([]);
@@ -70,6 +72,7 @@
 	function handleToggleFlag() {
 		if (!modalCommit) return;
 		const newState = !modalCommit.flagged;
+		toggleCommitFlag(modalCommit.id, newState);
 		commits = commits.map(c => c.id === modalCommit!.id ? { ...c, flagged: newState } : c);
 		modalCommit = { ...modalCommit, flagged: newState };
 	}
@@ -78,6 +81,9 @@
 		modalCommit = null;
 		modalDiff = null;
 	}
+
+	// --- Review result modal ---
+	let reviewResult: string | null = $state(null);
 </script>
 
 <!-- Greeting -->
@@ -107,6 +113,9 @@
 
 	<!-- Sessions -->
 	<SessionCard bind:sessions {claudeSessions} {sessionsLoaded} />
+
+	<!-- Claude Inbox (only when tasks exist) -->
+	<ClaudeInboxCard onviewresult={(r) => { reviewResult = r; }} />
 
 	<!-- Recent Commits -->
 	{#if commitsLoaded}
@@ -143,5 +152,11 @@
 		loading={modalLoading}
 		onclose={closeDiffModal}
 		onflag={handleToggleFlag}
+		onsubmitreview={(taskId) => { closeDiffModal(); }}
 	/>
+{/if}
+
+<!-- Review Result Modal -->
+{#if reviewResult}
+	<ReviewResultModal result={reviewResult} onclose={() => { reviewResult = null; }} />
 {/if}

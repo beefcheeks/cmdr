@@ -143,6 +143,7 @@ export interface GitCommit {
 	url: string;
 	seen: boolean;
 	flagged: boolean;
+	reviewCount: number;
 	repoName: string;
 	repoPath: string;
 }
@@ -273,4 +274,72 @@ export function brewUpgrade(formula?: string): Promise<{ status: string; output:
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ formula: formula ?? '' })
 	});
+}
+
+// Review
+
+export interface ReviewComment {
+	id: number;
+	repoPath: string;
+	sha: string;
+	lineStart: number;
+	lineEnd: number;
+	comment: string;
+	createdAt: string;
+}
+
+export function getReviewComments(repoPath: string, sha: string): Promise<ReviewComment[]> {
+	return request(`/review/comments?repo=${encodeURIComponent(repoPath)}&sha=${encodeURIComponent(sha)}`);
+}
+
+export function saveReviewComment(body: { repoPath: string; sha: string; lineStart: number; lineEnd: number; comment: string }): Promise<{ id: number }> {
+	return request('/review/comments', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	});
+}
+
+export function deleteReviewComment(id: number): Promise<{ status: string }> {
+	return request('/review/comments/delete', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id })
+	});
+}
+
+export function submitReview(repoPath: string, sha: string): Promise<{ id: number; status: string }> {
+	return request('/review/submit', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ repoPath, sha })
+	});
+}
+
+// Claude Tasks
+
+export interface ClaudeTask {
+	id: number;
+	type: string;
+	status: 'pending' | 'running' | 'completed' | 'failed';
+	repoPath: string;
+	commitSha: string;
+	errorMsg?: string;
+	createdAt: string;
+	startedAt: string | null;
+	completedAt: string | null;
+}
+
+export interface ClaudeTaskResult {
+	result: string;
+	status: string;
+	errorMsg: string;
+}
+
+export function getClaudeTasks(): Promise<ClaudeTask[]> {
+	return request('/claude/tasks');
+}
+
+export function getClaudeTaskResult(id: number): Promise<ClaudeTaskResult> {
+	return request(`/claude/tasks/result?id=${id}`);
 }
