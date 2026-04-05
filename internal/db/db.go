@@ -97,6 +97,31 @@ func migrate(d *sql.DB) error {
 			recorded_at     DATETIME,
 			PRIMARY KEY (slot, bucket)
 		);
+
+		CREATE TABLE IF NOT EXISTS review_comments (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			repo_path   TEXT NOT NULL,
+			sha         TEXT NOT NULL,
+			line_start  INTEGER NOT NULL,
+			line_end    INTEGER NOT NULL,
+			comment     TEXT NOT NULL,
+			created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+			UNIQUE(repo_path, sha, line_start, line_end)
+		);
+
+		CREATE TABLE IF NOT EXISTS claude_tasks (
+			id            INTEGER PRIMARY KEY AUTOINCREMENT,
+			type          TEXT NOT NULL DEFAULT 'review',
+			status        TEXT NOT NULL DEFAULT 'pending',
+			repo_path     TEXT NOT NULL,
+			commit_sha    TEXT NOT NULL DEFAULT '',
+			prompt        TEXT NOT NULL,
+			result        TEXT NOT NULL DEFAULT '',
+			error_msg     TEXT NOT NULL DEFAULT '',
+			created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+			started_at    DATETIME,
+			completed_at  DATETIME
+		);
 	`)
 	return err
 }

@@ -218,6 +218,21 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	// Brew
 	mux.HandleFunc("/api/brew/outdated", handleBrewOutdated())
 	mux.HandleFunc("/api/brew/upgrade", handleBrewUpgrade())
+
+	// Review
+	mux.HandleFunc("/api/review/comments", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handleSaveReviewComment(database)(w, r)
+		} else {
+			handleListReviewComments(database)(w, r)
+		}
+	})
+	mux.HandleFunc("/api/review/comments/delete", handleDeleteReviewComment(database))
+	mux.HandleFunc("/api/review/submit", handleSubmitReview(database, bus))
+
+	// Claude tasks
+	mux.HandleFunc("/api/claude/tasks", handleListClaudeTasks(database))
+	mux.HandleFunc("/api/claude/tasks/result", handleGetClaudeTaskResult(database))
 }
 
 func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {
