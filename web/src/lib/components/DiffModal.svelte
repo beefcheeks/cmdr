@@ -314,33 +314,36 @@
 								 'hover:bg-bourbon-900/50'}"
 							onmouseenter={() => handleLineMouseEnter(idx)}
 						>
-							<!-- Gutter -->
-							<div class="w-8 shrink-0 flex items-center justify-center border-r sticky left-0 z-10 bg-bourbon-950
-								{selected ? 'border-r-run-500' :
-								 commented ? 'border-r-cmd-500/50' :
-								 'border-r-bourbon-800/50'}">
-								{#if !commented}
-								<button
-									onmousedown={(e) => { e.preventDefault(); handleGutterMouseDown(idx); }}
-									class="w-4 h-4 flex items-center justify-center rounded-sm
-										bg-bourbon-800 text-bourbon-400 border border-bourbon-700
-										hover:bg-run-600 hover:text-white hover:border-run-500
-										opacity-0 group-hover/line:opacity-100 transition-all cursor-pointer
-										{hasPendingInput ? 'pointer-events-none' : ''}"
-								>
-									<Plus size={12} strokeWidth={3} />
-								</button>
-							{/if}
-							</div>
-							<!-- Line numbers (unified only — delta has them in the content) -->
-							{#if format !== 'delta'}
-								{#if lineNumbers[idx]}
-									<span class="w-8 shrink-0 text-right text-bourbon-800 select-none py-px">{lineNumbers[idx].oldNum ?? ''}</span>
-									<span class="w-8 shrink-0 text-right pr-2 text-bourbon-800 select-none py-px">{lineNumbers[idx].newNum ?? ''}</span>
-								{:else}
-									<span class="w-16 shrink-0"></span>
+							<!-- Gutter + Line numbers: sticky left -->
+							<div class="sticky left-0 z-10 flex shrink-0 bg-bourbon-950">
+								<div class="w-8 flex items-center justify-center border-r
+									{selected ? 'border-r-run-500' :
+									 commented ? 'border-r-cmd-500/50' :
+									 'border-r-bourbon-800/50'}">
+									{#if !commented}
+									<button
+										onmousedown={(e) => { e.preventDefault(); handleGutterMouseDown(idx); }}
+										class="w-4 h-4 flex items-center justify-center rounded-sm
+											bg-bourbon-800 text-bourbon-400 border border-bourbon-700
+											hover:bg-run-600 hover:text-white hover:border-run-500
+											cursor-pointer
+											{hasPendingInput ? 'invisible' : 'invisible group-hover/line:visible'}"
+									>
+										<Plus size={12} strokeWidth={3} />
+									</button>
 								{/if}
-							{/if}
+								</div>
+								{#if format !== 'delta'}
+									{#if lineNumbers[idx]}
+										<span class="w-10 text-right pr-1 text-[10px] leading-relaxed select-none self-center pt-px
+											{lineNumbers[idx].oldNum && !lineNumbers[idx].newNum ? 'text-red-400/60' : 'text-bourbon-700'}">{lineNumbers[idx].oldNum ?? ''}</span>
+										<span class="w-10 text-right pr-2 text-[10px] leading-relaxed select-none self-center pt-px
+											{lineNumbers[idx].newNum && !lineNumbers[idx].oldNum ? 'text-green-400/60' : 'text-bourbon-700'}">{lineNumbers[idx].newNum ?? ''}</span>
+									{:else}
+										<span class="w-20"></span>
+									{/if}
+								{/if}
+							</div>
 							<!-- Content -->
 							{#if format === 'delta'}
 								<span class="flex-1 px-2 text-bourbon-400 select-text py-px whitespace-pre">{@html line}</span>

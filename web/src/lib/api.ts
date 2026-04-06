@@ -354,6 +354,14 @@ export function dismissClaudeTask(id: number): Promise<{ dismissed: number }> {
 	});
 }
 
+export function updateClaudeTaskResult(id: number, result: string): Promise<{ status: string }> {
+	return request('/claude/tasks/update', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id, result })
+	});
+}
+
 export function startRefactor(taskId: number): Promise<{ target: string; session: string; window: string }> {
 	return request('/review/refactor', {
 		method: 'POST',

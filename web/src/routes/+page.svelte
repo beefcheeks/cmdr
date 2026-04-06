@@ -166,5 +166,5 @@
 
 <!-- Review Result Modal -->
 {#if reviewResult}
-	<ReviewResultModal result={reviewResult} taskId={reviewTask?.id ?? 0} prUrl={reviewTask?.prUrl} onclose={() => { reviewResult = null; reviewTask = null; }} />
+	<ReviewResultModal result={reviewResult} taskId={reviewTask?.id ?? 0} prUrl={reviewTask?.prUrl} onclose={() => { reviewResult = null; reviewTask = null; }} onupdate={(r) => { reviewResult = r; }} />
 {/if}

@@ -356,6 +356,30 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+func handleUpdateClaudeTaskResult(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var body struct {
+			ID     int    `json:"id"`
+			Result string `json:"result"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == 0 {
+			http.Error(w, `{"error":"missing id or result"}`, http.StatusBadRequest)
+			return
+		}
+
+		title := extractTitle(body.Result)
+		db.Exec(`UPDATE claude_tasks SET result=?, title=? WHERE id=?`, body.Result, title, body.ID)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}
+}
+
 func handleGetClaudeTaskResult(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
