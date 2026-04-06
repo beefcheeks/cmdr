@@ -42,6 +42,40 @@
 
 	let diffLines = $derived(diff ? diff.split('\n') : []);
 
+	// Parse file line numbers from unified diff hunk headers
+	interface LineInfo {
+		oldNum: number | null;
+		newNum: number | null;
+	}
+
+	let lineNumbers = $derived.by(() => {
+		if (format === 'delta') return [] as LineInfo[];
+		const result: LineInfo[] = [];
+		let oldLine = 0;
+		let newLine = 0;
+		for (const line of diffLines) {
+			const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+			if (hunkMatch) {
+				oldLine = parseInt(hunkMatch[1]);
+				newLine = parseInt(hunkMatch[2]);
+				result.push({ oldNum: null, newNum: null });
+			} else if (line.startsWith('diff ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ')) {
+				result.push({ oldNum: null, newNum: null });
+			} else if (line.startsWith('-')) {
+				result.push({ oldNum: oldLine, newNum: null });
+				oldLine++;
+			} else if (line.startsWith('+')) {
+				result.push({ oldNum: null, newNum: newLine });
+				newLine++;
+			} else {
+				result.push({ oldNum: oldLine, newNum: newLine });
+				oldLine++;
+				newLine++;
+			}
+		}
+		return result;
+	});
+
 	let hasPendingInput = $derived(activeCommentLine !== null);
 
 	$effect(() => {
@@ -298,11 +332,18 @@
 								</button>
 							{/if}
 							</div>
-							<!-- Line number -->
-							<span class="w-10 shrink-0 text-right pr-3 text-bourbon-800 select-none py-px">{idx + 1}</span>
+							<!-- Line numbers (unified only — delta has them in the content) -->
+							{#if format !== 'delta'}
+								{#if lineNumbers[idx]}
+									<span class="w-8 shrink-0 text-right text-bourbon-800 select-none py-px">{lineNumbers[idx].oldNum ?? ''}</span>
+									<span class="w-8 shrink-0 text-right pr-2 text-bourbon-800 select-none py-px">{lineNumbers[idx].newNum ?? ''}</span>
+								{:else}
+									<span class="w-16 shrink-0"></span>
+								{/if}
+							{/if}
 							<!-- Content -->
 							{#if format === 'delta'}
-								<span class="flex-1 px-2 text-bourbon-400 select-text py-px">{@html line}</span>
+								<span class="flex-1 px-2 text-bourbon-400 select-text py-px whitespace-pre">{@html line}</span>
 							{:else}
 								<span class="flex-1 px-2 select-text py-px {lineClass(line)}">{line}</span>
 							{/if}
