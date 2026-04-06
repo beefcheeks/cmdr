@@ -80,6 +80,11 @@ func pollTick(bus *EventBus, s *scheduler.Scheduler, db *sql.DB, away bool, tick
 	if tickCount%12 == 0 {
 		publishAnalytics(bus, db, now)
 	}
+
+	// Refresh brew outdated every 30m (360 ticks) or on first tick
+	if tickCount%360 == 0 {
+		go refreshBrewOutdated(bus)
+	}
 }
 
 // systemIdleTime returns how long since the last keyboard/mouse input.

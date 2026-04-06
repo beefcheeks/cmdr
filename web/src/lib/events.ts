@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { DaemonStatus, TmuxSession, ClaudeSession, ActivityResponse, ClaudeTask } from './api';
+import type { DaemonStatus, TmuxSession, ClaudeSession, ActivityResponse, ClaudeTask, BrewOutdated } from './api';
 
 type EventMap = {
 	status: DaemonStatus;
@@ -7,6 +7,7 @@ type EventMap = {
 	'claude:sessions': ClaudeSession[];
 	'analytics:activity': ActivityResponse;
 	'claude:task': Partial<ClaudeTask> & { id: number; status: string };
+	'brew:outdated': BrewOutdated;
 };
 
 type EventHandler<K extends keyof EventMap> = (data: EventMap[K]) => void;

@@ -1,23 +1,31 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { getBrewOutdated, brewUpgrade, type BrewOutdated } from '$lib/api';
+	import { events } from '$lib/events';
 
 	let data = $state<BrewOutdated | null>(null);
 	let loaded = $state(false);
 	let upgrading: string | null = $state(null);
+	let unsub: (() => void) | null = null;
 
 	let total: number = $derived(data ? data.formulae.length + data.casks.length : 0);
 
 	onMount(async () => {
 		try { data = await getBrewOutdated(); } catch { /* silent */ }
 		loaded = true;
+
+		unsub = events.on('brew:outdated', (evt) => {
+			data = evt;
+		});
 	});
+
+	onDestroy(() => { unsub?.(); });
 
 	async function handleUpgrade(formula?: string) {
 		upgrading = formula ?? 'all';
 		try {
 			await brewUpgrade(formula);
-			data = await getBrewOutdated();
+			// Cache refresh + SSE push happens server-side after upgrade
 		} catch { /* silent */ }
 		upgrading = null;
 	}

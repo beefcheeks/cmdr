@@ -217,7 +217,7 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 
 	// Brew
 	mux.HandleFunc("/api/brew/outdated", handleBrewOutdated())
-	mux.HandleFunc("/api/brew/upgrade", handleBrewUpgrade())
+	mux.HandleFunc("/api/brew/upgrade", handleBrewUpgrade(bus))
 
 	// Review
 	mux.HandleFunc("/api/review/comments", func(w http.ResponseWriter, r *http.Request) {

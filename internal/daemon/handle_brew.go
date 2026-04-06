@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"os/exec"
+	"sync"
 )
 
 type brewFormula struct {
@@ -19,21 +21,51 @@ type brewOutdated struct {
 	Casks    []brewFormula `json:"casks"`
 }
 
-func handleBrewOutdated() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		out, err := exec.Command("brew", "outdated", "--json").Output()
-		if err != nil {
-			http.Error(w, `{"error":"brew outdated failed"}`, http.StatusInternalServerError)
-			return
-		}
+// Cached brew outdated result
+var brewCache struct {
+	mu   sync.RWMutex
+	data []byte // raw JSON from brew outdated --json
+}
 
-		w.Header().Set("Content-Type", "application/json")
-		// Pass through brew's JSON directly
-		w.Write(out)
+// refreshBrewOutdated runs brew outdated --json and caches the result.
+// Publishes via SSE so the frontend updates without a page refresh.
+func refreshBrewOutdated(bus *EventBus) {
+	cmd := exec.Command("brew", "outdated", "--json")
+	cmd.Env = append(os.Environ(), "HOMEBREW_NO_AUTO_UPDATE=1")
+	out, err := cmd.Output()
+	if err != nil {
+		log.Printf("cmdr: brew outdated failed: %v", err)
+		return
+	}
+
+	brewCache.mu.Lock()
+	brewCache.data = out
+	brewCache.mu.Unlock()
+
+	// Parse and publish via SSE
+	var result brewOutdated
+	if err := json.Unmarshal(out, &result); err == nil {
+		bus.Publish(Event{Type: "brew:outdated", Data: result})
 	}
 }
 
-func handleBrewUpgrade() http.HandlerFunc {
+func handleBrewOutdated() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		brewCache.mu.RLock()
+		data := brewCache.data
+		brewCache.mu.RUnlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		if data != nil {
+			w.Write(data)
+		} else {
+			// No cache yet — return empty
+			w.Write([]byte(`{"formulae":[],"casks":[]}`))
+		}
+	}
+}
+
+func handleBrewUpgrade(bus *EventBus) http.HandlerFunc {
 	type upgradeReq struct {
 		Formula string `json:"formula"` // empty = upgrade all
 	}
@@ -61,6 +93,10 @@ func handleBrewUpgrade() http.HandlerFunc {
 		}
 
 		log.Printf("cmdr: brew upgrade completed: %s", req.Formula)
+
+		// Refresh cache after upgrade so the card updates
+		go refreshBrewOutdated(bus)
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"status": "ok",
