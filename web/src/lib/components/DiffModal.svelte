@@ -315,7 +315,7 @@
 							onmouseenter={() => handleLineMouseEnter(idx)}
 						>
 							<!-- Gutter -->
-							<div class="w-8 shrink-0 flex items-center justify-center border-r
+							<div class="w-8 shrink-0 flex items-center justify-center border-r sticky left-0 z-10 bg-bourbon-950
 								{selected ? 'border-r-run-500' :
 								 commented ? 'border-r-cmd-500/50' :
 								 'border-r-bourbon-800/50'}">
@@ -351,7 +351,7 @@
 
 						<!-- Inline comment input (pending — amber/run scheme) -->
 						{#if activeCommentLine === idx && !dragging}
-							<div class="border-l-3 border-l-run-500 bg-bourbon-900 ml-8 -translate-x-px">
+							<div class="sticky left-8 z-20 border-l-3 border-l-run-500 bg-bourbon-900 ml-8 -translate-x-px w-[calc(min(90vw,64rem)-2rem)]">
 								<textarea
 									use:autofocus
 									bind:value={commentDraft}
@@ -373,7 +373,7 @@
 						<!-- Persisted comment (saved — purple/cmd scheme) -->
 						{@const existingComment = getCommentAfterLine(idx)}
 						{#if existingComment && activeCommentLine !== idx}
-							<div class="flex items-center border-l-3 border-l-cmd-500/40 bg-cmd-500/5 ml-8 -translate-x-px px-4 py-2">
+							<div class="sticky left-8 z-20 flex items-center border-l-3 border-l-cmd-500/40 bg-cmd-500/5 ml-8 -translate-x-px px-4 py-2 w-[calc(min(90vw,64rem)-2rem)]">
 								<span class="flex-1 text-xs text-bourbon-300 select-text">{existingComment.comment}</span>
 								<button
 									onclick={() => startEditComment(existingComment)}
