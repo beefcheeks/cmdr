@@ -1,20 +1,20 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { CheckCircle, XCircle, Eye, X } from 'lucide-svelte';
+	import { CheckCircle, XCircle, Wrench, GitPullRequestArrow, X } from 'lucide-svelte';
 	import { getClaudeTasks, getClaudeTaskResult, dismissClaudeTask, dismissAllClaudeTasks, type ClaudeTask } from '$lib/api';
 	import { events } from '$lib/events';
 
 	let {
 		onviewresult
 	}: {
-		onviewresult: (result: string) => void;
+		onviewresult: (task: ClaudeTask, result: string) => void;
 	} = $props();
 
 	let tasks = $state<ClaudeTask[]>([]);
 	let loaded = $state(false);
 	let unsub: (() => void) | null = null;
-	let pendingCount = $derived(tasks.filter(t => t.status === 'running' || t.status === 'pending').length);
-	let completedCount = $derived(tasks.filter(t => t.status === 'completed' || t.status === 'failed').length);
+	let activeCount = $derived(tasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring').length);
+	let dismissableCount = $derived(tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'resolved').length);
 
 	onMount(async () => {
 		try { tasks = await getClaudeTasks(); } catch { /* silent */ }
@@ -23,7 +23,12 @@
 		unsub = events.on('claude:task', (evt) => {
 			const idx = tasks.findIndex(t => t.id === evt.id);
 			if (idx >= 0) {
-				tasks[idx] = { ...tasks[idx], status: evt.status as ClaudeTask['status'] };
+				tasks[idx] = {
+					...tasks[idx],
+					status: evt.status as ClaudeTask['status'],
+					...(evt.title && { title: evt.title as string }),
+					...(evt.prUrl && { prUrl: evt.prUrl as string }),
+				};
 				tasks = [...tasks];
 			} else {
 				getClaudeTasks().then(t => { tasks = t; }).catch(() => {});
@@ -38,7 +43,7 @@
 	async function viewResult(task: ClaudeTask) {
 		try {
 			const { result } = await getClaudeTaskResult(task.id);
-			onviewresult(result);
+			onviewresult(task, result);
 		} catch { /* silent */ }
 	}
 
@@ -49,7 +54,7 @@
 
 	async function clearAll() {
 		await dismissAllClaudeTasks();
-		tasks = tasks.filter(t => t.status === 'running' || t.status === 'pending');
+		tasks = tasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring');
 	}
 
 	function timeAgo(dateStr: string): string {
@@ -76,62 +81,73 @@
 	<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
 		<div class="flex items-center gap-4 mb-4">
 			<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">Claude Inbox</h2>
-			{#if pendingCount > 0}
+			{#if activeCount > 0}
 				<span class="text-xs font-medium text-run-400 bg-run-700/30 px-2.5 py-0.5 rounded-full animate-pulse">
-					{pendingCount} running
+					{activeCount} active
 				</span>
 			{/if}
 		</div>
 
 		<div class="flex flex-col gap-1">
 			{#each tasks as task}
-				<div class="group flex items-center gap-3 text-sm py-1.5">
+				<button
+					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
+						{task.status === 'completed' || task.status === 'resolved' ? 'hover:bg-bourbon-800/50' : ''}"
+					onclick={() => (task.status === 'completed' || task.status === 'resolved') ? viewResult(task) : null}
+					disabled={task.status !== 'completed' && task.status !== 'resolved'}
+				>
 					<!-- Status icon -->
-					{#if task.status === 'running' || task.status === 'pending'}
-						<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin shrink-0"></div>
-					{:else if task.status === 'completed'}
-						<span class="text-green-400 shrink-0"><CheckCircle size={14} /></span>
-					{:else}
-						<span class="text-red-400 shrink-0"><XCircle size={14} /></span>
-					{/if}
-
-					<!-- Type badge -->
-					<span class="text-[10px] font-mono text-bourbon-500 bg-bourbon-800/50 px-1.5 py-0.5 rounded shrink-0">{task.type}</span>
-
-					<!-- Metadata -->
-					<span class="text-bourbon-100 font-mono text-xs">{repoName(task.repoPath)}</span>
-					{#if task.commitSha}
-						<span class="text-cmd-400 font-mono text-[10px]">{shortSha(task.commitSha)}</span>
-					{/if}
-
-					<span class="text-bourbon-700 text-[10px] ml-auto shrink-0">{timeAgo(task.createdAt)}</span>
-
-					<!-- Actions -->
-					<div class="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-						{#if task.status === 'completed'}
-							<button
-								onclick={() => viewResult(task)}
-								class="text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer"
-								title="View result"
-							>
-								<Eye size={14} />
-							</button>
+					<div class="pt-0.5 shrink-0">
+						{#if task.status === 'running' || task.status === 'pending'}
+							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
+						{:else if task.status === 'refactoring'}
+							<span class="text-cmd-400 animate-pulse"><Wrench size={15} /></span>
+						{:else if task.status === 'resolved'}
+							<span class="text-green-400"><GitPullRequestArrow size={15} /></span>
+						{:else if task.status === 'completed'}
+							<span class="text-green-400"><CheckCircle size={15} /></span>
+						{:else}
+							<span class="text-red-400"><XCircle size={15} /></span>
 						{/if}
-						{#if task.status !== 'running' && task.status !== 'pending'}
-							<button
-								onclick={() => dismiss(task)}
-								class="text-bourbon-700 hover:text-red-400 transition-colors cursor-pointer"
+					</div>
+
+					<!-- Content -->
+					<div class="flex flex-col gap-1 min-w-0 flex-1">
+						<!-- Row 1: Title -->
+						<span class="text-bourbon-100 text-xs leading-snug truncate">
+							{task.title || `${repoName(task.repoPath)}/${task.commitSha ? shortSha(task.commitSha) : ''}`}
+						</span>
+						<!-- Row 2: Type badge + repo + sha + time -->
+						<div class="flex items-center gap-2 text-[10px]">
+							<span class="font-mono text-cmd-400 bg-cmd-700/30 px-1.5 py-0.5 rounded-full">{task.type}</span>
+							<span class="font-mono text-bourbon-500">{repoName(task.repoPath)}</span>
+							{#if task.commitSha}
+								<span class="font-mono text-bourbon-600">{shortSha(task.commitSha)}</span>
+							{/if}
+							<span class="text-bourbon-700 ml-auto">{timeAgo(task.createdAt)}</span>
+						</div>
+					</div>
+
+					<!-- Overlay actions -->
+					{#if task.status !== 'running' && task.status !== 'pending' && task.status !== 'refactoring'}
+						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-10 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-r from-transparent to-30% to-bourbon-900">
+							<span
+								role="button"
+								tabindex="0"
+								onclick={(e) => { e.stopPropagation(); dismiss(task); }}
+								onkeydown={(e) => { if (e.key === 'Enter') dismiss(task); }}
+								class="btn-chiclet-danger !w-6 !h-6"
 								title="Dismiss"
 							>
 								<X size={14} />
-							</button>
-						{/if}
-					</div>
-				</div>
+							</span>
+						</div>
+					{/if}
+				</button>
 			{/each}
 		</div>
 
-		{#if completedCount > 1}
+		{#if dismissableCount > 1}
 			<div class="mt-3 pt-3 border-t border-bourbon-800">
 				<button
 					onclick={clearAll}

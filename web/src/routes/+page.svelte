@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { getCommits, toggleCommitFlag, type TmuxSession, type ClaudeSession, type GitCommit } from '$lib/api';
+	import { getCommits, toggleCommitFlag, type TmuxSession, type ClaudeSession, type GitCommit, type ClaudeTask } from '$lib/api';
 	import { events } from '$lib/events';
 
 	import BrewCard from '$lib/components/BrewCard.svelte';
@@ -84,6 +84,7 @@
 
 	// --- Review result modal ---
 	let reviewResult: string | null = $state(null);
+	let reviewTask: ClaudeTask | null = $state(null);
 </script>
 
 <!-- Greeting -->
@@ -106,29 +107,30 @@
 	</div>
 {:else}
 
-<div class="columns-1 lg:columns-2 gap-4 *:mb-4 *:break-inside-avoid">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
 
-	<!-- Brew Updates (only when actionable) -->
-	<BrewCard />
+	<!-- Left column: Sessions -->
+	<div class="flex flex-col gap-4">
+		<BrewCard />
+		<SessionCard bind:sessions {claudeSessions} {sessionsLoaded} />
+	</div>
 
-	<!-- Sessions -->
-	<SessionCard bind:sessions {claudeSessions} {sessionsLoaded} />
+	<!-- Right column: Inbox + Commits -->
+	<div class="flex flex-col gap-4">
+		<ClaudeInboxCard onviewresult={(task, r) => { reviewTask = task; reviewResult = r; }} />
 
-	<!-- Claude Inbox (only when tasks exist) -->
-	<ClaudeInboxCard onviewresult={(r) => { reviewResult = r; }} />
-
-	<!-- Recent Commits -->
-	{#if commitsLoaded}
-		<CommitCard bind:commits onopendiff={handleOpenDiff} />
-	{:else}
-		<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
-			<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500 mb-4">Recent Commits</h2>
-			<div class="flex items-center gap-2 text-bourbon-600 py-4">
-				<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
-				<span class="text-[10px] font-mono">loading commits</span>
+		{#if commitsLoaded}
+			<CommitCard bind:commits onopendiff={handleOpenDiff} />
+		{:else}
+			<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
+				<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500 mb-4">Recent Commits</h2>
+				<div class="flex items-center gap-2 text-bourbon-600 py-4">
+					<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
+					<span class="text-[10px] font-mono">loading commits</span>
+				</div>
 			</div>
-		</div>
-	{/if}
+		{/if}
+	</div>
 
 </div>
 
@@ -153,10 +155,16 @@
 		onclose={closeDiffModal}
 		onflag={handleToggleFlag}
 		onsubmitreview={(taskId) => { closeDiffModal(); }}
+		onclearreview={() => {
+			if (modalCommit) {
+				commits = commits.map(c => c.id === modalCommit!.id ? { ...c, reviewCount: 0 } : c);
+				modalCommit = { ...modalCommit, reviewCount: 0 };
+			}
+		}}
 	/>
 {/if}
 
 <!-- Review Result Modal -->
 {#if reviewResult}
-	<ReviewResultModal result={reviewResult} onclose={() => { reviewResult = null; }} />
+	<ReviewResultModal result={reviewResult} taskId={reviewTask?.id ?? 0} prUrl={reviewTask?.prUrl} onclose={() => { reviewResult = null; reviewTask = null; }} />
 {/if}

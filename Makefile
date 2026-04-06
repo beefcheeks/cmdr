@@ -35,6 +35,7 @@ install: build
 	@sed 's|__CMDR_BIN__|$(BIN_DIR)/cmdr|g' $(PLIST_NAME) > $(LAUNCH_DIR)/$(PLIST_NAME)
 	@launchctl bootstrap "$(GUI_DOMAIN)" "$(LAUNCH_DIR)/$(PLIST_NAME)"
 	@rm -f cmdr
+	@bash scripts/install-hooks.sh
 	@echo "cmdr: service installed and started ✓"
 
 # Stop and remove service

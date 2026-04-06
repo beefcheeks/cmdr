@@ -321,9 +321,11 @@ export function submitReview(repoPath: string, sha: string): Promise<{ id: numbe
 export interface ClaudeTask {
 	id: number;
 	type: string;
-	status: 'pending' | 'running' | 'completed' | 'failed';
+	status: 'pending' | 'running' | 'completed' | 'failed' | 'refactoring' | 'resolved';
 	repoPath: string;
 	commitSha: string;
+	title?: string;
+	prUrl?: string;
 	errorMsg?: string;
 	createdAt: string;
 	startedAt: string | null;
@@ -349,6 +351,14 @@ export function dismissClaudeTask(id: number): Promise<{ dismissed: number }> {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ id })
+	});
+}
+
+export function startRefactor(taskId: number): Promise<{ target: string; session: string; window: string }> {
+	return request('/review/refactor', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ taskId })
 	});
 }
 

@@ -123,5 +123,23 @@ func migrate(d *sql.DB) error {
 			completed_at  DATETIME
 		);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Add title column to claude_tasks if missing
+	var hasTitle bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='title'`).Scan(&hasTitle)
+	if !hasTitle {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
+	}
+
+	// Add pr_url column to claude_tasks if missing
+	var hasPrUrl bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='pr_url'`).Scan(&hasPrUrl)
+	if !hasPrUrl {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN pr_url TEXT NOT NULL DEFAULT ''`)
+	}
+
+	return nil
 }

@@ -17,7 +17,8 @@
 		loading,
 		onclose,
 		onflag,
-		onsubmitreview
+		onsubmitreview,
+		onclearreview
 	}: {
 		commit: GitCommit;
 		diff: string | null;
@@ -27,6 +28,7 @@
 		onclose: () => void;
 		onflag: () => void;
 		onsubmitreview?: (taskId: number) => void;
+		onclearreview?: () => void;
 	} = $props();
 
 	let comments = $state<ReviewComment[]>([]);
@@ -148,6 +150,16 @@
 			await deleteReviewComment(c.id);
 			comments = comments.filter(x => x.id !== c.id);
 		} catch { /* silent */ }
+	}
+
+	async function handleClearComments() {
+		for (const c of comments) {
+			try { await deleteReviewComment(c.id); } catch { /* silent */ }
+		}
+		comments = [];
+		activeCommentLine = null;
+		commentDraft = '';
+		onclearreview?.();
 	}
 
 	async function handleSubmitReview() {
@@ -351,6 +363,12 @@
 					<span class="text-[10px] font-mono text-run-400">
 						{comments.length} review comment{comments.length !== 1 ? 's' : ''}
 					</span>
+					<button
+						onclick={handleClearComments}
+						class="text-[10px] font-mono text-bourbon-600 hover:text-red-400 transition-colors cursor-pointer"
+					>
+						clear
+					</button>
 				{/if}
 			</div>
 			<div class="flex items-center gap-3">

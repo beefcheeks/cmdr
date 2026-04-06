@@ -3,15 +3,20 @@ package daemon
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mikehu/cmdr/internal/gitlocal"
 	"github.com/mikehu/cmdr/internal/prompts"
 	"github.com/mikehu/cmdr/internal/tasks"
+	"github.com/mikehu/cmdr/internal/tmux"
 )
 
 // --- Review Comments ---
@@ -252,10 +257,11 @@ func runClaudeReview(db *sql.DB, bus *EventBus, taskID int, repoPath, sha, promp
 		return
 	}
 
-	db.Exec(`UPDATE claude_tasks SET status='completed', result=?, completed_at=? WHERE id=?`,
-		result, now, taskID)
+	title := extractTitle(result)
+	db.Exec(`UPDATE claude_tasks SET status='completed', result=?, title=?, completed_at=? WHERE id=?`,
+		result, title, now, taskID)
 	bus.Publish(Event{Type: "claude:task", Data: map[string]any{
-		"id": taskID, "status": "completed",
+		"id": taskID, "status": "completed", "title": title,
 	}})
 
 	// Clean up review comments — they've been consumed
@@ -269,6 +275,36 @@ type reviewAnnotation struct {
 	comment            string
 }
 
+// extractTitle pulls a display title from the review result.
+// Looks for the first markdown heading, falls back to first non-empty line.
+var headingRe = regexp.MustCompile(`(?m)^#{1,3}\s+(.+)$`)
+
+func extractTitle(result string) string {
+	var raw string
+	if m := headingRe.FindStringSubmatch(result); len(m) > 1 {
+		raw = m[1]
+	} else {
+		// Fall back to first non-empty line
+		for _, line := range strings.SplitN(result, "\n", 10) {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				raw = line
+				break
+			}
+		}
+	}
+	// Strip markdown inline formatting (backticks, bold, italic)
+	raw = strings.ReplaceAll(raw, "`", "")
+	raw = strings.ReplaceAll(raw, "**", "")
+	raw = strings.ReplaceAll(raw, "*", "")
+	raw = strings.TrimSpace(raw)
+	// Truncate if too long
+	if len(raw) > 120 {
+		raw = raw[:117] + "..."
+	}
+	return raw
+}
+
 var htmlTagRe = regexp.MustCompile(`<[^>]+>`)
 
 func stripHTML(s string) string {
@@ -279,7 +315,7 @@ func stripHTML(s string) string {
 
 func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		query := `SELECT id, type, status, repo_path, commit_sha, error_msg, created_at, started_at, completed_at
+		query := `SELECT id, type, status, repo_path, commit_sha, COALESCE(title, ''), COALESCE(pr_url, ''), error_msg, created_at, started_at, completed_at
 			FROM claude_tasks ORDER BY created_at DESC LIMIT 50`
 		rows, err := db.Query(query)
 		if err != nil {
@@ -294,6 +330,8 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 			Status      string  `json:"status"`
 			RepoPath    string  `json:"repoPath"`
 			CommitSHA   string  `json:"commitSha"`
+			Title       string  `json:"title,omitempty"`
+			PRUrl       string  `json:"prUrl,omitempty"`
 			ErrorMsg    string  `json:"errorMsg,omitempty"`
 			CreatedAt   string  `json:"createdAt"`
 			StartedAt   *string `json:"startedAt"`
@@ -303,7 +341,7 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 		var taskList []task
 		for rows.Next() {
 			var t task
-			if err := rows.Scan(&t.ID, &t.Type, &t.Status, &t.RepoPath, &t.CommitSHA,
+			if err := rows.Scan(&t.ID, &t.Type, &t.Status, &t.RepoPath, &t.CommitSHA, &t.Title, &t.PRUrl,
 				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
 				continue
 			}
@@ -362,7 +400,7 @@ func handleDismissClaudeTask(db *sql.DB) http.HandlerFunc {
 		var res sql.Result
 		var err error
 		if body.All == "completed" {
-			res, err = db.Exec(`DELETE FROM claude_tasks WHERE status IN ('completed', 'failed')`)
+			res, err = db.Exec(`DELETE FROM claude_tasks WHERE status IN ('completed', 'failed', 'resolved')`)
 		} else if body.ID > 0 {
 			res, err = db.Exec(`DELETE FROM claude_tasks WHERE id = ?`, body.ID)
 		} else {
@@ -377,5 +415,111 @@ func handleDismissClaudeTask(db *sql.DB) http.HandlerFunc {
 		n, _ := res.RowsAffected()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]int64{"dismissed": n})
+	}
+}
+
+func handleResolveTask(db *sql.DB, bus *EventBus) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var body struct {
+			ID    int    `json:"id"`
+			PRUrl string `json:"prUrl"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == 0 {
+			http.Error(w, `{"error":"missing id"}`, http.StatusBadRequest)
+			return
+		}
+
+		now := time.Now().Format(time.RFC3339)
+		db.Exec(`UPDATE claude_tasks SET status='resolved', pr_url=?, completed_at=? WHERE id=?`,
+			body.PRUrl, now, body.ID)
+
+		bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+			"id": body.ID, "status": "resolved", "prUrl": body.PRUrl,
+		}})
+
+		log.Printf("cmdr: task %d resolved (PR: %s)", body.ID, body.PRUrl)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "resolved", "prUrl": body.PRUrl})
+	}
+}
+
+func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var body struct {
+			TaskID int `json:"taskId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TaskID == 0 {
+			http.Error(w, `{"error":"missing taskId"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Load the task
+		var result, repoPath, commitSha string
+		err := db.QueryRow(`SELECT result, repo_path, commit_sha FROM claude_tasks WHERE id = ?`, body.TaskID).
+			Scan(&result, &repoPath, &commitSha)
+		if err != nil {
+			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+			return
+		}
+
+		windowName := fmt.Sprintf("review-%d", body.TaskID)
+		worktreeName := fmt.Sprintf("refactor-review-%d", body.TaskID)
+
+		shortSha := commitSha
+		if len(shortSha) > 7 {
+			shortSha = shortSha[:7]
+		}
+
+		// Build autonomous refactor prompt
+		prompt := fmt.Sprintf(
+			"You are addressing code review findings from commit %s in this repository.\n\n"+
+				"## Review Findings\n\n%s\n\n"+
+				"## Instructions\n\n"+
+				"1. Read the relevant source files to understand the current code\n"+
+				"2. Address each finding — make the changes directly\n"+
+				"3. If a finding has multiple valid approaches, pick the cleanest one\n"+
+				"4. Only ask me if there is genuine ambiguity that requires a judgment call\n"+
+				"5. When all changes are complete, commit with a message referencing the findings\n"+
+				"6. Push the branch and create a PR — keep the body short: a brief summary of what changed and why, no test plan or checklists\n",
+			shortSha, result,
+		)
+
+		// Write task ID marker file keyed by branch name (for hook to find)
+		refactorDir := filepath.Join(os.Getenv("HOME"), ".cmdr", "refactors")
+		os.MkdirAll(refactorDir, 0o700)
+		os.WriteFile(filepath.Join(refactorDir, worktreeName), []byte(strconv.Itoa(body.TaskID)), 0o644)
+
+		// Escape single quotes for shell, launch claude with worktree
+		escaped := strings.ReplaceAll(prompt, "'", "'\\''")
+		cmd := fmt.Sprintf("claude -w %s '%s'", worktreeName, escaped)
+
+		target, err := tmux.CreateRefactorWindow(windowName, repoPath, cmd)
+		if err != nil {
+			log.Printf("cmdr: refactor window failed: %v", err)
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+
+		// Update task status
+		db.Exec(`UPDATE claude_tasks SET status='refactoring' WHERE id=?`, body.TaskID)
+		bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+			"id": body.TaskID, "status": "refactoring",
+		}})
+
+		log.Printf("cmdr: refactor started (task %d, worktree %s, target %s)", body.TaskID, worktreeName, target)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"target": target, "session": "claude_refactor", "window": windowName})
 	}
 }

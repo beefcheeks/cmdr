@@ -19,6 +19,14 @@ const (
 	idleSignal    = "hold Space to speak"
 )
 
+// Waiting signals — Claude needs user input (permission prompts, etc.)
+var waitingSignals = []string{
+	"accept edits",
+	"to accept",
+	"to reject",
+	"shift+tab to cycle",
+}
+
 // How long after the last "working" state before we consider it "idle"
 const idleThreshold = 5 * time.Minute
 
@@ -66,8 +74,17 @@ func PaneStatus(tmuxTarget string) string {
 		}
 	}
 
+	// Check for permission/action prompts — Claude is waiting for user input
+	for _, line := range tail {
+		for _, sig := range waitingSignals {
+			if strings.Contains(line, sig) {
+				return "waiting"
+			}
+		}
+	}
+
 	// Neither signal found — don't assume working.
-	// Could be a permission prompt, compact output, or crashed session.
+	// Could be compact output or crashed session.
 	return "unknown"
 }
 

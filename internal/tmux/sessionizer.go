@@ -47,6 +47,36 @@ func CreateSession(dir string) (string, error) {
 	return name, nil
 }
 
+const refactorSession = "claude_refactor"
+
+// CreateRefactorWindow creates (or reuses) the claude_refactor session and
+// opens a new window with the given name, working directory, and initial command.
+// Returns the target string "session:window" for further use.
+func CreateRefactorWindow(windowName, dir, shellCmd string) (string, error) {
+	// Wrap in a shell so the command string is interpreted properly.
+	// When the command exits, the window closes automatically.
+	args := []string{"bash", "-c", shellCmd}
+
+	// Ensure session exists
+	if err := tmuxCmd("has-session", "-t="+refactorSession).Run(); err != nil {
+		// Create session with first window running the command
+		cmdArgs := []string{"new-session", "-ds", refactorSession, "-n", windowName, "-c", dir}
+		cmdArgs = append(cmdArgs, args...)
+		if out, err := tmuxCmd(cmdArgs...).CombinedOutput(); err != nil {
+			return "", fmt.Errorf("tmux new-session: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+	} else {
+		// Session exists — add a new window running the command
+		cmdArgs := []string{"new-window", "-t", refactorSession, "-n", windowName, "-c", dir}
+		cmdArgs = append(cmdArgs, args...)
+		if out, err := tmuxCmd(cmdArgs...).CombinedOutput(); err != nil {
+			return "", fmt.Errorf("tmux new-window: %s: %w", strings.TrimSpace(string(out)), err)
+		}
+	}
+
+	return refactorSession + ":" + windowName, nil
+}
+
 func gitOutput(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	out, err := cmd.Output()

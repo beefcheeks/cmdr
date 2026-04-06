@@ -1,16 +1,32 @@
 <script lang="ts">
-	import { X } from 'lucide-svelte';
+	import { X, Wrench, ExternalLink } from 'lucide-svelte';
 	import { marked } from 'marked';
+	import { startRefactor } from '$lib/api';
 
 	let {
 		result,
+		taskId,
+		prUrl,
 		onclose
 	}: {
 		result: string;
+		taskId: number;
+		prUrl?: string;
 		onclose: () => void;
 	} = $props();
 
-	let html = $derived(marked(result));
+	let html = $derived(marked(result, { breaks: true }));
+	let refactoring = $state(false);
+
+	async function handleRefactor() {
+		refactoring = true;
+		try {
+			await startRefactor(taskId);
+			onclose();
+		} catch (e) {
+			refactoring = false;
+		}
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -37,7 +53,7 @@
 		</div>
 		<div class="overflow-auto flex-1 px-6 py-4 bg-bourbon-950">
 			<div class="prose prose-invert prose-sm max-w-none
-				prose-headings:text-bourbon-200 prose-headings:font-display prose-headings:uppercase prose-headings:tracking-wider
+				prose-headings:text-bourbon-200 prose-headings:font-display prose-headings:tracking-wider
 				prose-p:text-bourbon-300
 				prose-strong:text-bourbon-200
 				prose-code:text-cmd-400 prose-code:bg-bourbon-950 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
@@ -47,6 +63,29 @@
 				prose-blockquote:border-l-run-500 prose-blockquote:text-bourbon-400">
 				{@html html}
 			</div>
+		</div>
+		<div class="flex items-center justify-between px-6 py-3 border-t border-bourbon-800 shrink-0">
+			<div>
+				{#if prUrl}
+					<a
+						href={prUrl}
+						target="_blank"
+						rel="noopener"
+						class="flex items-center gap-1.5 text-[10px] font-mono text-cmd-400 hover:text-cmd-300 transition-colors"
+					>
+						<ExternalLink size={12} />
+						PR #{prUrl.split('/').pop()}
+					</a>
+				{/if}
+			</div>
+			<button
+				onclick={handleRefactor}
+				disabled={refactoring}
+				class="flex items-center gap-1.5 text-[10px] font-mono text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer disabled:opacity-50"
+			>
+				<Wrench size={12} />
+				{refactoring ? 'Starting...' : 'Start Refactor'}
+			</button>
 		</div>
 	</div>
 </div>
