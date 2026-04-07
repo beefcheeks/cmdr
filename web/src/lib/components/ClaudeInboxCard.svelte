@@ -130,7 +130,7 @@
 
 					<!-- Overlay actions -->
 					{#if task.status !== 'running' && task.status !== 'pending'}
-						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-10 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-r from-transparent to-30% to-bourbon-900">
+						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-10 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-r from-transparent to-30% to-bourbon-800">
 							<span
 								role="button"
 								tabindex="0"

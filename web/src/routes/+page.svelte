@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { getCommits, toggleCommitFlag, type TmuxSession, type ClaudeSession, type GitCommit, type ClaudeTask } from '$lib/api';
 	import { events, connection } from '$lib/events';
+	import { playSound, SFX } from '$lib/sounds';
 
 	import BrewCard from '$lib/components/BrewCard.svelte';
 	import SessionCard from '$lib/components/SessionCard.svelte';
@@ -47,7 +48,11 @@
 	});
 
 	const unsubCommits = events.on('commits:sync', async () => {
+		const prev = commits;
 		commits = await getCommits();
+		if (commitsLoaded && commits.some(c => !c.seen && !prev.find(p => p.id === c.id))) {
+			playSound(SFX.newCommits, 0.5);
+		}
 	});
 
 	onDestroy(() => {

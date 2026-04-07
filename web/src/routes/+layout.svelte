@@ -5,6 +5,9 @@
 	import { onDestroy } from 'svelte';
 	import { events } from '$lib/events';
 	import type { DaemonStatus } from '$lib/api';
+	import { playSound, preload, SFX } from '$lib/sounds';
+
+	preload(SFX.hover, SFX.click, SFX.newCommits);
 
 	let { children } = $props();
 	let status: DaemonStatus | null = $state(null);
@@ -36,7 +39,7 @@
 
 <div class="relative min-h-screen bg-bourbon-950 text-bourbon-300 font-body bg-crosshair">
 	<div class="pointer-events-none absolute inset-x-0 top-0 h-80 z-0 bg-linear-to-b from-bourbon-950 from-40% via-bourbon-950/85 via-50% to-transparent"></div>
-	<div class="relative z-10 max-w-7xl mx-auto px-6 pt-6 pb-4">
+	<div class="relative z-10 max-w-7xl mx-auto px-6 pt-8 pb-6">
 		<nav class="flex items-center justify-between mb-6">
 			<div class="flex items-center gap-5">
 				<img src="/cmdr-logo.svg" alt="cmdr" class="h-10" />
@@ -57,6 +60,8 @@
 					<li>
 						<a
 							href={item.href}
+							onmouseenter={() => { if ($page.url.pathname !== item.href) playSound(SFX.hover, 0.35); }}
+							onclick={() => playSound(SFX.click, 0.4)}
 							class="flex items-center gap-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-widest rounded-md no-underline transition-colors
 								{$page.url.pathname === item.href
 									? 'text-run-400 bg-bourbon-900'
