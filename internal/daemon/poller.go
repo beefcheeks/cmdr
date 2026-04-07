@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -79,6 +80,12 @@ func pollTick(bus *EventBus, s *scheduler.Scheduler, db *sql.DB, away bool, tick
 	// Publish analytics snapshot every 60s (12 ticks)
 	if tickCount%12 == 0 {
 		publishAnalytics(bus, db, now)
+	}
+
+	// Check for completed refactors every 60s (12 ticks)
+	if tickCount%12 == 0 {
+		checkRefactoringTasks(db, bus, tmuxSessions)
+		publishCommitWatermark(bus, db)
 	}
 
 	// Refresh brew outdated every 30m (360 ticks) or on first tick
@@ -205,6 +212,104 @@ func findAncestorPane(pid int, ppidMap map[int]int, shellPIDs map[int]*claudePan
 		}
 	}
 	return nil
+}
+
+// checkRefactoringTasks finds tasks stuck in "refactoring" and resolves them
+// when their tmux window no longer exists (Claude finished or was closed).
+// If a PR URL is found via `gh`, the task is marked resolved with the URL.
+// Otherwise it's marked completed so it's no longer stuck.
+func checkRefactoringTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
+	rows, err := db.Query(`SELECT id, repo_path FROM claude_tasks WHERE status = 'refactoring'`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	// Collect all window names in the claude_refactor session
+	refactorWindows := make(map[string]bool)
+	for _, s := range tmuxSessions {
+		if s.Name != "claude_refactor" {
+			continue
+		}
+		for _, w := range s.Windows {
+			refactorWindows[w.Name] = true
+		}
+	}
+
+	type task struct {
+		id       int
+		repoPath string
+	}
+	var done []task
+	for rows.Next() {
+		var t task
+		if err := rows.Scan(&t.id, &t.repoPath); err != nil {
+			continue
+		}
+		worktreeName := fmt.Sprintf("refactor-review-%d", t.id)
+		windowName := fmt.Sprintf("review-%d", t.id)
+		windowAlive := refactorWindows[windowName]
+		worktreeExists := isDir(filepath.Join(t.repoPath, ".claude", "worktrees", worktreeName))
+
+		// Only resolve when both the tmux window is gone AND the worktree is pruned.
+		// Window gone + worktree exists = Claude finished but work is still there.
+		if !windowAlive && !worktreeExists {
+			done = append(done, t)
+		}
+	}
+
+	for _, t := range done {
+		worktreeName := fmt.Sprintf("refactor-review-%d", t.id)
+		prUrl := findPRForBranch(t.repoPath, worktreeName)
+
+		now := time.Now().Format(time.RFC3339)
+		if prUrl != "" {
+			db.Exec(`UPDATE claude_tasks SET status='resolved', pr_url=?, completed_at=? WHERE id=?`, prUrl, now, t.id)
+			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+				"id": t.id, "status": "resolved", "prUrl": prUrl,
+			}})
+			log.Printf("cmdr: task %d auto-resolved (PR: %s)", t.id, prUrl)
+		} else {
+			db.Exec(`UPDATE claude_tasks SET status='completed', completed_at=? WHERE id=?`, now, t.id)
+			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+				"id": t.id, "status": "completed",
+			}})
+			log.Printf("cmdr: task %d auto-completed (worktree pruned, no PR found)", t.id)
+		}
+
+		// Clean up marker file
+		markerPath := filepath.Join(os.Getenv("HOME"), ".cmdr", "refactors", worktreeName)
+		os.Remove(markerPath)
+	}
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// publishCommitWatermark sends the latest commit ID so the frontend can detect staleness.
+func publishCommitWatermark(bus *EventBus, db *sql.DB) {
+	var latestID int
+	db.QueryRow(`SELECT COALESCE(MAX(id), 0) FROM commits`).Scan(&latestID)
+	bus.Publish(Event{Type: "commits:watermark", Data: map[string]any{"latestId": latestID}})
+}
+
+// findPRForBranch uses `gh` to find an open or merged PR for a branch.
+func findPRForBranch(repoPath, branch string) string {
+	// Check open first, then merged
+	for _, state := range []string{"open", "merged"} {
+		cmd := exec.Command("gh", "pr", "list", "--head", branch, "--state", state, "--json", "url", "--limit", "1", "-q", ".[0].url")
+		cmd.Dir = repoPath
+		out, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+		if url := strings.TrimSpace(string(out)); url != "" {
+			return url
+		}
+	}
+	return ""
 }
 
 // getParentPIDs returns a map of PID → PPID for all processes.

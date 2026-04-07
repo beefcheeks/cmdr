@@ -9,6 +9,7 @@ type EventMap = {
 	'claude:task': Partial<ClaudeTask> & { id: number; status: string };
 	'brew:outdated': BrewOutdated;
 	'commits:sync': boolean;
+	'commits:watermark': { latestId: number };
 };
 
 type EventHandler<K extends keyof EventMap> = (data: EventMap[K]) => void;

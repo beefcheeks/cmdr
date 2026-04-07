@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { X, ExternalLink, Flag, Send, Trash2, Plus, Pencil } from 'lucide-svelte';
+	import { X, ExternalLink, Flag, Send, Trash2, Plus, Pencil, MessageSquare } from 'lucide-svelte';
 	import {
 		getReviewComments,
 		saveReviewComment,
@@ -353,14 +353,14 @@
 
 						<!-- Inline comment input (pending — amber/run scheme) -->
 						{#if activeCommentLine === idx && !dragging}
-							<div class="sticky left-8 z-20 border-l-3 border-l-run-500 bg-bourbon-900 ml-8 -translate-x-px w-[calc(min(90vw,64rem)-2rem)]">
+							<div class="sticky left-8 z-20 border-l border-l-run-500 bg-bourbon-900 ml-8 -translate-x-px w-[calc(min(90vw,64rem)-2rem)]">
 								<textarea
 									use:autofocus
 									bind:value={commentDraft}
 									placeholder="Add review comment..."
 									class="w-full bg-transparent text-xs text-bourbon-200 px-4 py-3 resize-none focus:outline-none placeholder:text-bourbon-700 select-text"
 									rows="2"
-									onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveComment(); if (e.key === 'Escape') cancelComment(); }}
+									onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveComment(); } if (e.key === 'Escape') cancelComment(); }}
 								></textarea>
 								<div class="flex items-center justify-between px-4 py-1.5 border-t border-bourbon-800/50">
 									<span class="text-[9px] text-bourbon-700">⌘+Enter to save</span>
@@ -375,8 +375,12 @@
 						<!-- Persisted comment (saved — purple/cmd scheme) -->
 						{@const existingComment = getCommentAfterLine(idx)}
 						{#if existingComment && activeCommentLine !== idx}
-							<div class="sticky left-8 z-20 flex items-center border-l-3 border-l-cmd-500/40 bg-cmd-500/5 ml-8 -translate-x-px px-4 py-2 w-[calc(min(90vw,64rem)-2rem)]">
-								<span class="flex-1 text-xs text-bourbon-300 select-text">{existingComment.comment}</span>
+							<div class="flex">
+								<div class="sticky left-0 z-10 w-8 shrink-0 flex items-center justify-center bg-bourbon-950 border-r border-r-cmd-500/50">
+									<span class="text-cmd-400/60"><MessageSquare size={12} /></span>
+								</div>
+							<div class="flex-1 flex items-center border-l border-l-cmd-400/50 bg-cmd-500/8 -translate-x-px px-4 py-2.5">
+								<span class="flex-1 text-xs text-bourbon-200 select-text">{existingComment.comment}</span>
 								<button
 									onclick={() => startEditComment(existingComment)}
 									class="shrink-0 text-bourbon-700 hover:text-cmd-400 transition-colors cursor-pointer ml-3
@@ -392,6 +396,7 @@
 								>
 									<Trash2 size={14} />
 								</button>
+							</div>
 							</div>
 						{/if}
 					{/each}

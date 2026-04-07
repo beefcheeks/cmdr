@@ -312,7 +312,7 @@
 												placeholder="Add guidance for this finding... (e.g. 'Go with suggestion 1' or 'Skip this — not applicable yet')"
 												class="w-full bg-run-500/5 text-xs text-bourbon-200 px-3 py-2 resize-none focus:outline-none placeholder:text-bourbon-700 select-text"
 												rows="2"
-												onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveNote(); if (e.key === 'Escape') cancelNote(); }}
+												onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveNote(); } if (e.key === 'Escape') cancelNote(); }}
 											></textarea>
 											<div class="flex items-center justify-between px-3 py-1.5">
 												<span class="text-[9px] text-bourbon-700">Cmd+Enter to save</span>

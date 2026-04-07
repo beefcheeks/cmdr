@@ -226,12 +226,12 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	// Review
 	mux.HandleFunc("/api/review/comments", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			handleSaveReviewComment(database)(w, r)
+			handleSaveReviewComment(database, bus)(w, r)
 		} else {
 			handleListReviewComments(database)(w, r)
 		}
 	})
-	mux.HandleFunc("/api/review/comments/delete", handleDeleteReviewComment(database))
+	mux.HandleFunc("/api/review/comments/delete", handleDeleteReviewComment(database, bus))
 	mux.HandleFunc("/api/review/submit", handleSubmitReview(database, bus))
 
 	// Claude tasks

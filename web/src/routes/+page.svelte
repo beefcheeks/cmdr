@@ -32,6 +32,7 @@
 	onMount(async () => {
 		try {
 			commits = await getCommits();
+			knownLatestId = Math.max(0, ...commits.map(c => c.id));
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to connect to daemon';
 		}
@@ -47,11 +48,31 @@
 		claudeSessions = data;
 	});
 
-	const unsubCommits = events.on('commits:sync', async () => {
+	let knownLatestId = $state(0);
+
+	async function refreshCommits() {
 		const prev = commits;
 		commits = await getCommits();
-		if (commitsLoaded && commits.some(c => !c.seen && !prev.find(p => p.id === c.id))) {
+		knownLatestId = Math.max(knownLatestId, ...commits.map(c => c.id));
+		const newUnseen = commits.filter(c => !c.seen && !prev.find(p => p.id === c.id));
+		if (commitsLoaded && newUnseen.length > 0) {
 			playSound(SFX.newCommits, 0.5);
+			// Native notification when app is not focused
+			if (!document.hasFocus() && (window as any).webkit?.messageHandlers?.notify) {
+				const repos = [...new Set(newUnseen.map(c => c.repoName))];
+				(window as any).webkit.messageHandlers.notify.postMessage({
+					title: `${newUnseen.length} new commit${newUnseen.length > 1 ? 's' : ''}`,
+					body: repos.join(', ')
+				});
+			}
+		}
+	}
+
+	const unsubCommits = events.on('commits:sync', refreshCommits);
+
+	const unsubWatermark = events.on('commits:watermark', (data: { latestId: number }) => {
+		if (commitsLoaded && data.latestId > knownLatestId) {
+			refreshCommits();
 		}
 	});
 
@@ -59,6 +80,7 @@
 		unsubTmux();
 		unsubClaude();
 		unsubCommits();
+		unsubWatermark();
 	});
 
 	// --- Diff modal ---
@@ -108,9 +130,9 @@
 </div>
 
 {#if $connection.reconnecting}
-	<div class="flex items-center justify-center gap-3 text-bourbon-600 py-4 mb-4">
+	<div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-bourbon-900 border border-run-500/40 rounded-full px-5 py-2.5 shadow-lg shadow-run-500/10">
 		<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
-		<span class="font-display text-[10px] uppercase tracking-widest">Reconnecting</span>
+		<span class="font-display text-[10px] uppercase tracking-widest text-run-400">Reconnecting</span>
 	</div>
 {/if}
 

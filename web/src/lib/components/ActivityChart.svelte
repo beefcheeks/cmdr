@@ -125,27 +125,51 @@
 		)
 	);
 
-	// Fill Claude gaps: between data points, assume all instances were idle.
+	// Fill Claude gaps: between data points, interpolate from neighbors.
+	// If both neighbors have Claude data, assume sessions were idle in the gap.
+	// This handles the common case where the poller has sparse coverage but
+	// Claude sessions were actually running continuously.
 	function fillClaudeGaps(buckets: ActivityBucket[]): ActivityBucket[] {
 		if (!buckets.length) return [];
+		const claudeBuckets = buckets.filter(b => b.claudeTotal > 0);
+		if (!claudeBuckets.length) return buckets;
+
 		const map = new Map(buckets.map((b) => [b.bucket, b]));
 		const filled: ActivityBucket[] = [];
 		const minBucket = Math.min(...buckets.map(b => b.bucket));
 		const maxBucket = Math.max(...buckets.map(b => b.bucket));
 
-		let lastTotal = 0;
+		// Build a lookup of nearest known Claude totals (before/after each bucket)
+		const claudeMap = new Map(claudeBuckets.map(b => [b.bucket, b]));
+		let lastKnown: ActivityBucket | null = null;
+		let nextKnown: ActivityBucket | null = null;
+
+		// Pre-compute next known Claude bucket for each position
+		const nextKnownAt = new Map<number, ActivityBucket>();
+		let scan: ActivityBucket | null = null;
+		for (let i = maxBucket; i >= minBucket; i--) {
+			const cb = claudeMap.get(i);
+			if (cb) scan = cb;
+			if (scan) nextKnownAt.set(i, scan);
+		}
+
+		lastKnown = null;
 		for (let i = minBucket; i <= maxBucket; i++) {
 			const b = map.get(i);
 			if (b) {
 				filled.push(b);
-				if (b.claudeTotal > 0) lastTotal = b.claudeTotal;
-			} else if (lastTotal > 0) {
-				// Gap — fill with all idle at last known total
-				filled.push({
-					bucket: i, samples: 0, nvim: 0, claude: 0, other: 0, inactive: 0, away: 0,
-					claudeTotal: lastTotal, claudeWorking: 0, claudeWaiting: 0,
-					claudeIdle: lastTotal, claudeUnknown: 0
-				});
+				if (b.claudeTotal > 0) lastKnown = b;
+			} else {
+				nextKnown = nextKnownAt.get(i) ?? null;
+				// Fill gap if we have Claude data on both sides (sessions were likely running)
+				if (lastKnown && nextKnown) {
+					const total = Math.round((lastKnown.claudeTotal + nextKnown.claudeTotal) / 2);
+					filled.push({
+						bucket: i, samples: 0, nvim: 0, claude: 0, other: 0, inactive: 0, away: 0,
+						claudeTotal: total, claudeWorking: 0, claudeWaiting: 0,
+						claudeIdle: total, claudeUnknown: 0
+					});
+				}
 			}
 		}
 		return filled;

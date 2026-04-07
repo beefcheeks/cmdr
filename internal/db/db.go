@@ -141,5 +141,12 @@ func migrate(d *sql.DB) error {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN pr_url TEXT NOT NULL DEFAULT ''`)
 	}
 
+	// Add refactored flag to claude_tasks if missing
+	var hasRefactored bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='refactored'`).Scan(&hasRefactored)
+	if !hasRefactored {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN refactored INTEGER NOT NULL DEFAULT 0`)
+	}
+
 	return nil
 }

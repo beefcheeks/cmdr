@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -68,7 +69,7 @@ func handleListReviewComments(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func handleSaveReviewComment(db *sql.DB) http.HandlerFunc {
+func handleSaveReviewComment(db *sql.DB, bus *EventBus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -98,12 +99,13 @@ func handleSaveReviewComment(db *sql.DB) http.HandlerFunc {
 		}
 
 		id, _ := res.LastInsertId()
+		bus.Publish(Event{Type: "commits:sync", Data: true})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]int64{"id": id})
 	}
 }
 
-func handleDeleteReviewComment(db *sql.DB) http.HandlerFunc {
+func handleDeleteReviewComment(db *sql.DB, bus *EventBus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -119,6 +121,7 @@ func handleDeleteReviewComment(db *sql.DB) http.HandlerFunc {
 		}
 
 		db.Exec(`DELETE FROM review_comments WHERE id = ?`, body.ID)
+		bus.Publish(Event{Type: "commits:sync", Data: true})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}
@@ -267,6 +270,9 @@ func runClaudeReview(db *sql.DB, bus *EventBus, taskID int, repoPath, sha, promp
 	// Clean up review comments — they've been consumed
 	db.Exec(`DELETE FROM review_comments WHERE repo_path=? AND sha=?`, repoPath, sha)
 
+	// Notify frontend so commit reviewCount refreshes
+	bus.Publish(Event{Type: "commits:sync", Data: true})
+
 	log.Printf("cmdr: claude review completed (task %d)", taskID)
 }
 
@@ -315,7 +321,7 @@ func stripHTML(s string) string {
 
 func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		query := `SELECT id, type, status, repo_path, commit_sha, COALESCE(title, ''), COALESCE(pr_url, ''), error_msg, created_at, started_at, completed_at
+		query := `SELECT id, type, status, repo_path, commit_sha, COALESCE(title, ''), COALESCE(pr_url, ''), error_msg, created_at, started_at, completed_at, COALESCE(refactored, 0)
 			FROM claude_tasks ORDER BY created_at DESC LIMIT 50`
 		rows, err := db.Query(query)
 		if err != nil {
@@ -336,13 +342,14 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 			CreatedAt   string  `json:"createdAt"`
 			StartedAt   *string `json:"startedAt"`
 			CompletedAt *string `json:"completedAt"`
+			Refactored  bool    `json:"refactored"`
 		}
 
 		var taskList []task
 		for rows.Next() {
 			var t task
 			if err := rows.Scan(&t.ID, &t.Type, &t.Status, &t.RepoPath, &t.CommitSHA, &t.Title, &t.PRUrl,
-				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt); err != nil {
+				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.Refactored); err != nil {
 				continue
 			}
 			taskList = append(taskList, t)
@@ -419,6 +426,13 @@ func handleDismissClaudeTask(db *sql.DB) http.HandlerFunc {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, jsonErr(err), http.StatusBadRequest)
 			return
+		}
+
+		// Clean up worktrees for refactoring tasks being dismissed
+		if body.ID > 0 {
+			cleanupRefactorWorktree(db, body.ID)
+		} else if body.All == "completed" {
+			cleanupAllRefactorWorktrees(db)
 		}
 
 		var res sql.Result
@@ -538,7 +552,7 @@ func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		}
 
 		// Update task status
-		db.Exec(`UPDATE claude_tasks SET status='refactoring' WHERE id=?`, body.TaskID)
+		db.Exec(`UPDATE claude_tasks SET status='refactoring', refactored=1 WHERE id=?`, body.TaskID)
 		bus.Publish(Event{Type: "claude:task", Data: map[string]any{
 			"id": body.TaskID, "status": "refactoring",
 		}})
@@ -548,4 +562,50 @@ func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"target": target, "session": "claude_refactor", "window": windowName})
 	}
+}
+
+// cleanupRefactorWorktree removes the worktree and marker file for a single task.
+func cleanupRefactorWorktree(db *sql.DB, taskID int) {
+	var repoPath, status string
+	err := db.QueryRow(`SELECT repo_path, status FROM claude_tasks WHERE id = ?`, taskID).Scan(&repoPath, &status)
+	if err != nil || status != "refactoring" {
+		return
+	}
+	pruneWorktree(repoPath, taskID)
+}
+
+// cleanupAllRefactorWorktrees removes worktrees for all refactoring tasks.
+func cleanupAllRefactorWorktrees(db *sql.DB) {
+	rows, err := db.Query(`SELECT id, repo_path FROM claude_tasks WHERE status = 'refactoring'`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int
+		var repoPath string
+		if err := rows.Scan(&id, &repoPath); err != nil {
+			continue
+		}
+		pruneWorktree(repoPath, id)
+	}
+}
+
+func pruneWorktree(repoPath string, taskID int) {
+	worktreeName := fmt.Sprintf("refactor-review-%d", taskID)
+	worktreePath := filepath.Join(repoPath, ".claude", "worktrees", worktreeName)
+
+	// Remove the worktree via git (handles index cleanup)
+	if _, err := os.Stat(worktreePath); err == nil {
+		cmd := exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath, "--force")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			log.Printf("cmdr: worktree remove failed (task %d): %s: %v", taskID, strings.TrimSpace(string(out)), err)
+		} else {
+			log.Printf("cmdr: pruned worktree %s (task %d)", worktreeName, taskID)
+		}
+	}
+
+	// Clean up marker file
+	markerPath := filepath.Join(os.Getenv("HOME"), ".cmdr", "refactors", worktreeName)
+	os.Remove(markerPath)
 }

@@ -13,8 +13,11 @@
 	let tasks = $state<ClaudeTask[]>([]);
 	let loaded = $state(false);
 	let unsub: (() => void) | null = null;
-	let activeCount = $derived(tasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring').length);
-	let dismissableCount = $derived(tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'resolved' || t.status === 'refactoring').length);
+
+	// Hide tasks that have completed their full lifecycle (refactored + done)
+	let visibleTasks = $derived(tasks.filter(t => !(t.refactored && (t.status === 'completed' || t.status === 'resolved'))));
+	let activeCount = $derived(visibleTasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring').length);
+	let dismissableCount = $derived(visibleTasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'resolved' || t.status === 'refactoring').length);
 
 	onMount(async () => {
 		try { tasks = await getClaudeTasks(); } catch { /* silent */ }
@@ -77,7 +80,7 @@
 	}
 </script>
 
-{#if loaded && tasks.length > 0}
+{#if loaded}
 	<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
 		<div class="flex items-center gap-4 mb-4">
 			<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">Claude Inbox</h2>
@@ -88,12 +91,21 @@
 			{/if}
 		</div>
 
+		{#if visibleTasks.length === 0}
+			<p class="text-sm text-bourbon-600">No new messages.</p>
+		{:else}
 		<div class="flex flex-col gap-1">
-			{#each tasks as task}
+			{#each visibleTasks as task}
 				<button
 					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
 						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' ? 'hover:bg-bourbon-800/50' : ''}"
-					onclick={() => (task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring') ? viewResult(task) : null}
+					onclick={() => {
+						if (task.status === 'resolved' && task.prUrl) {
+							window.open(task.prUrl, '_blank');
+						} else if (task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring') {
+							viewResult(task);
+						}
+					}}
 					disabled={task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring'}
 				>
 					<!-- Status icon -->
@@ -104,6 +116,8 @@
 							<span class="text-cmd-400 animate-pulse"><Wrench size={15} /></span>
 						{:else if task.status === 'resolved'}
 							<span class="text-green-400"><GitPullRequestArrow size={15} /></span>
+						{:else if task.status === 'completed' && task.refactored}
+							<span class="text-green-400"><Wrench size={15} /></span>
 						{:else if task.status === 'completed'}
 							<span class="text-green-400"><CheckCircle size={15} /></span>
 						{:else}
@@ -130,7 +144,7 @@
 
 					<!-- Overlay actions -->
 					{#if task.status !== 'running' && task.status !== 'pending'}
-						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-10 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-r from-transparent to-30% to-bourbon-800">
+						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-10 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-r from-transparent to-30% to-bourbon-800 rounded-r-lg">
 							<span
 								role="button"
 								tabindex="0"
@@ -154,6 +168,7 @@
 					class="text-[10px] font-mono text-bourbon-600 hover:text-bourbon-400 transition-colors cursor-pointer"
 				>clear all completed</button>
 			</div>
+		{/if}
 		{/if}
 	</div>
 {/if}

@@ -1,5 +1,6 @@
 import Cocoa
 import WebKit
+import UserNotifications
 
 // MARK: - Gradient view behind traffic lights
 
@@ -41,7 +42,7 @@ class TrackingContentView: NSView {
 
 // MARK: - App Delegate
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMessageHandler, WKUIDelegate, UNUserNotificationCenterDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var statusItem: NSStatusItem!
@@ -49,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var trafficLightButtons: [NSButton] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        setupNotifications()
         setupMenuBar()
         setupMainMenu()
         setupWindow()
@@ -65,6 +67,49 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         sender.orderOut(nil)
         return false
+    }
+
+    // MARK: - Notifications
+
+    private func setupNotifications() {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = self
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    // Handle messages from the webview
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "notify", let body = message.body as? [String: Any],
+              let title = body["title"] as? String else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = title
+        if let subtitle = body["body"] as? String { content.body = subtitle }
+        content.sound = .default
+
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: - WKUIDelegate (external links)
+
+    // Handle target="_blank" links by opening in the system browser
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if let url = navigationAction.request.url {
+            NSWorkspace.shared.open(url)
+        }
+        return nil
+    }
+
+    // Clicking a notification brings the app to focus
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        showWindow()
+        completionHandler()
+    }
+
+    // Show notifications even when app is frontmost (for testing)
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 
     // MARK: - Main Menu
@@ -219,9 +264,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Web view fills the container
         let config = WKWebViewConfiguration()
         // Disable right-click context menu
-        let script = WKUserScript(source: "document.addEventListener('contextmenu', e => e.preventDefault());", injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        config.userContentController.addUserScript(script)
+        let noCtxMenu = WKUserScript(source: "document.addEventListener('contextmenu', e => e.preventDefault());", injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        config.userContentController.addUserScript(noCtxMenu)
+        // Register message handler for native notifications
+        config.userContentController.add(self, name: "notify")
         webView = WKWebView(frame: container.bounds, configuration: config)
+        webView.uiDelegate = self
         webView.customUserAgent = "cmdr-app"
         webView.autoresizingMask = [.width, .height]
         container.addSubview(webView)
