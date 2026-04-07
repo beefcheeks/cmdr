@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '../app.css';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { LayoutDashboard, ListChecks, Settings } from 'lucide-svelte';
 	import { onDestroy } from 'svelte';
 	import { events } from '$lib/events';
@@ -30,7 +30,7 @@
 		'/settings': 'Settings'
 	};
 
-	let pageTitle = $derived(pageTitles[$page.url.pathname] ?? 'cmdr');
+	let pageTitle = $derived(pageTitles[page.url.pathname] ?? 'cmdr');
 </script>
 
 <svelte:head>
@@ -60,14 +60,14 @@
 					<li>
 						<a
 							href={item.href}
-							onmouseenter={() => { if ($page.url.pathname !== item.href) playSound(SFX.hover, 0.35); }}
+							onmouseenter={() => { if (page.url.pathname !== item.href) playSound(SFX.hover, 0.35); }}
 							onclick={() => playSound(SFX.click, 0.4)}
 							class="flex items-center gap-2 px-3 py-1.5 font-display text-xs font-bold uppercase tracking-widest rounded-md no-underline transition-colors
-								{$page.url.pathname === item.href
+								{page.url.pathname === item.href
 									? 'text-run-400 bg-bourbon-900'
 									: 'text-bourbon-600 hover:text-bourbon-400 hover:bg-bourbon-900/50'}"
 						>
-							<span class={$page.url.pathname === item.href ? 'text-run-500' : 'text-bourbon-500'}>
+							<span class={page.url.pathname === item.href ? 'text-run-500' : 'text-bourbon-500'}>
 								<item.icon size={14} strokeWidth={2.5} />
 							</span>
 							{item.label}
