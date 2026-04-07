@@ -174,8 +174,9 @@
 										{/if}
 										<button
 										onclick={(e) => { e.stopPropagation(); openFolder(pane.cwd); }}
-										class="text-bourbon-500 font-mono text-xs hover:text-cmd-400 transition-colors cursor-pointer text-left"
-									>{shortenPath(pane.cwd)}</button>
+										class="text-bourbon-500 font-mono text-xs hover:text-cmd-400 transition-colors cursor-pointer truncate min-w-0"
+									style="direction: rtl; text-align: left;"
+									><bdi>{shortenPath(pane.cwd)}</bdi></button>
 									</div>
 								{/each}
 							{/each}

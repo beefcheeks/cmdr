@@ -424,7 +424,7 @@ func handleDismissClaudeTask(db *sql.DB) http.HandlerFunc {
 		var res sql.Result
 		var err error
 		if body.All == "completed" {
-			res, err = db.Exec(`DELETE FROM claude_tasks WHERE status IN ('completed', 'failed', 'resolved')`)
+			res, err = db.Exec(`DELETE FROM claude_tasks WHERE status IN ('completed', 'failed', 'resolved', 'refactoring')`)
 		} else if body.ID > 0 {
 			res, err = db.Exec(`DELETE FROM claude_tasks WHERE id = ?`, body.ID)
 		} else {
@@ -512,10 +512,12 @@ func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
 				"## Instructions\n\n"+
 				"1. Read the relevant source files to understand the current code\n"+
 				"2. Address each finding — make the changes directly\n"+
-				"3. If a finding has multiple valid approaches, pick the cleanest one\n"+
-				"4. Only ask me if there is genuine ambiguity that requires a judgment call\n"+
-				"5. When all changes are complete, commit with a message referencing the findings\n"+
-				"6. Push the branch and create a PR — keep the body short: a brief summary of what changed and why, no test plan or checklists\n",
+				"3. If a finding contains a `> User response:` blockquote, treat it as explicit guidance from the reviewer — follow it instead of choosing on your own\n"+
+				"4. If a finding has multiple valid approaches and no user response, pick the cleanest one\n"+
+				"5. If a finding was removed from the review, it means the reviewer decided it's not applicable — skip it\n"+
+				"6. Only ask me if there is genuine ambiguity that requires a judgment call\n"+
+				"7. When all changes are complete, commit with a message referencing the findings\n"+
+				"8. Push the branch and create a PR — keep the body short: a brief summary of what changed and why, no test plan or checklists\n",
 			shortSha, result,
 		)
 

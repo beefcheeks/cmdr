@@ -14,7 +14,7 @@
 	let loaded = $state(false);
 	let unsub: (() => void) | null = null;
 	let activeCount = $derived(tasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring').length);
-	let dismissableCount = $derived(tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'resolved').length);
+	let dismissableCount = $derived(tasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'resolved' || t.status === 'refactoring').length);
 
 	onMount(async () => {
 		try { tasks = await getClaudeTasks(); } catch { /* silent */ }
@@ -54,7 +54,7 @@
 
 	async function clearAll() {
 		await dismissAllClaudeTasks();
-		tasks = tasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring');
+		tasks = tasks.filter(t => t.status === 'running' || t.status === 'pending');
 	}
 
 	function timeAgo(dateStr: string): string {
@@ -92,9 +92,9 @@
 			{#each tasks as task}
 				<button
 					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
-						{task.status === 'completed' || task.status === 'resolved' ? 'hover:bg-bourbon-800/50' : ''}"
-					onclick={() => (task.status === 'completed' || task.status === 'resolved') ? viewResult(task) : null}
-					disabled={task.status !== 'completed' && task.status !== 'resolved'}
+						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' ? 'hover:bg-bourbon-800/50' : ''}"
+					onclick={() => (task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring') ? viewResult(task) : null}
+					disabled={task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring'}
 				>
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">
@@ -129,7 +129,7 @@
 					</div>
 
 					<!-- Overlay actions -->
-					{#if task.status !== 'running' && task.status !== 'pending' && task.status !== 'refactoring'}
+					{#if task.status !== 'running' && task.status !== 'pending'}
 						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-10 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-r from-transparent to-30% to-bourbon-900">
 							<span
 								role="button"

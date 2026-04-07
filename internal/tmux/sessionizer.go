@@ -74,6 +74,9 @@ func CreateRefactorWindow(windowName, dir, shellCmd string) (string, error) {
 		}
 	}
 
+	// Make this the attached session so the user sees it
+	_ = SwitchClient(refactorSession)
+
 	return refactorSession + ":" + windowName, nil
 }
 
