@@ -31,7 +31,7 @@ var brewCache struct {
 // Publishes via SSE so the frontend updates without a page refresh.
 func refreshBrewOutdated(bus *EventBus) {
 	cmd := exec.Command("brew", "outdated", "--json")
-	cmd.Env = append(os.Environ(), "HOMEBREW_NO_AUTO_UPDATE=1")
+	cmd.Env = os.Environ()
 	out, err := cmd.Output()
 	if err != nil {
 		log.Printf("cmdr: brew outdated failed: %v", err)
@@ -45,7 +45,11 @@ func refreshBrewOutdated(bus *EventBus) {
 	// Parse and publish via SSE
 	var result brewOutdated
 	if err := json.Unmarshal(out, &result); err == nil {
-		bus.Publish(Event{Type: "brew:outdated", Data: result})
+		total := len(result.Formulae) + len(result.Casks)
+		log.Printf("cmdr: brew outdated: %d formulae, %d casks", len(result.Formulae), len(result.Casks))
+		if total > 0 {
+			bus.Publish(Event{Type: "brew:outdated", Data: result})
+		}
 	}
 }
 
