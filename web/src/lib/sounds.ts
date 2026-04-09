@@ -10,7 +10,10 @@ const rawData = new Map<string, ArrayBuffer>();
 const fetching = new Map<string, Promise<ArrayBuffer>>();
 
 function getContext(): AudioContext {
-	if (!ctx) ctx = new AudioContext();
+	if (!ctx || ctx.state === 'closed') {
+		ctx = new AudioContext();
+		buffers.clear(); // buffers are tied to the old context
+	}
 	return ctx;
 }
 
@@ -20,6 +23,20 @@ async function ensureResumed(): Promise<AudioContext> {
 		await audioCtx.resume();
 	}
 	return audioCtx;
+}
+
+// After macOS sleep/wake, WKWebView may silently kill the audio session.
+// Recreate the context on visibility change to recover.
+if (typeof document !== 'undefined') {
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'visible' && ctx) {
+			ctx.resume().catch(() => {
+				ctx?.close().catch(() => {});
+				ctx = null;
+				buffers.clear();
+			});
+		}
+	});
 }
 
 // Prefetch raw audio data without creating AudioContext
