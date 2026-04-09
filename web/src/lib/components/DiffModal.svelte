@@ -482,7 +482,7 @@
 					</button>
 				{/if}
 			</div>
-			<div class="flex items-center gap-3 flex-1">
+			<div class="flex items-center gap-3">
 				{#if submitting}
 					<div class="flex items-center gap-2 text-bourbon-600">
 						<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>

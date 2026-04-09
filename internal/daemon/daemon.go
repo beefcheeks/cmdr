@@ -250,6 +250,11 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/directives/create", handleCreateDirective(database))
 	mux.HandleFunc("/api/directives/save", handleSaveDirective(database))
 	mux.HandleFunc("/api/directives/submit", handleSubmitDirective(database))
+
+	// Code + Images (for directive composer)
+	mux.HandleFunc("/api/code/files", handleCodeFiles())
+	mux.HandleFunc("/api/images/upload", handleImageUpload())
+	mux.HandleFunc("/api/images/", handleImageServe())
 }
 
 func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {

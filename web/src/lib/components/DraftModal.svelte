@@ -10,6 +10,13 @@
 		dismissClaudeTask,
 		type MonitoredRepo
 	} from '$lib/api';
+	import {
+		type Block,
+		parseBlocks,
+		serializeBlocks,
+		ensureTrailingTextBlock
+	} from '$lib/blocks';
+	import BlockEditor from './blocks/BlockEditor.svelte';
 
 	let {
 		initial,
@@ -23,17 +30,19 @@
 
 	let repos = $state<MonitoredRepo[]>([]);
 	let taskId = $state<number | null>(null);
-	let content = $state('');
+	let blocks = $state<Block[]>([]);
 	let repoPath = $state('');
 	let saving = $state(false);
 	let submitting = $state(false);
 	let lastSavedContent = '';
 	let lastSavedRepo = '';
+	let loaded = $state(false);
+	let editorRef: { focusLast: () => void } | undefined = $state(undefined);
 
 	onMount(async () => {
 		repos = await getRepos();
 
-		content = initial?.content ?? '';
+		let content = initial?.content ?? '';
 		repoPath = initial?.repoPath ?? '';
 
 		if (!repoPath && repos.length > 0) {
@@ -41,31 +50,34 @@
 		}
 
 		if (initial?.taskId) {
-			// Resume existing draft
 			taskId = initial.taskId;
 			try {
 				const { result } = await getClaudeTaskResult(taskId);
 				content = result || '';
 			} catch { /* use initial content */ }
 		} else {
-			// Create new directive task
 			const res = await createDirective(repoPath, content);
 			taskId = res.id;
 		}
+
+		blocks = ensureTrailingTextBlock(parseBlocks(content));
 		lastSavedContent = content;
 		lastSavedRepo = repoPath;
+		loaded = true;
 	});
 
-	// Auto-save via $effect — debounces on content/repoPath changes
+	// Serialize + auto-save when blocks or repo change
+	let serialized = $derived(serializeBlocks(blocks));
+
 	$effect(() => {
-		const c = content;
+		const s = serialized;
 		const r = repoPath;
 
 		const timer = setTimeout(async () => {
-			if (!taskId || (c === lastSavedContent && r === lastSavedRepo)) return;
+			if (!taskId || !loaded || (s === lastSavedContent && r === lastSavedRepo)) return;
 			saving = true;
-			await saveDirective(taskId, r, c);
-			lastSavedContent = c;
+			await saveDirective(taskId, r, s);
+			lastSavedContent = s;
 			lastSavedRepo = r;
 			saving = false;
 		}, 1500);
@@ -74,16 +86,17 @@
 	});
 
 	onDestroy(() => {
-		if (taskId && (content !== lastSavedContent || repoPath !== lastSavedRepo)) {
-			saveDirective(taskId, repoPath, content);
+		const s = serializeBlocks(blocks);
+		if (taskId && (s !== lastSavedContent || repoPath !== lastSavedRepo)) {
+			saveDirective(taskId, repoPath, s);
 		}
 	});
 
 	async function handleSubmit() {
-		if (!taskId || !content.trim() || !repoPath) return;
+		if (!taskId || !serialized.trim() || !repoPath) return;
 		submitting = true;
 
-		await saveDirective(taskId, repoPath, content);
+		await saveDirective(taskId, repoPath, serialized);
 
 		try {
 			await submitDirective(taskId);
@@ -105,13 +118,6 @@
 			e.preventDefault();
 			handleSubmit();
 		}
-		if (e.key === 'Escape') {
-			onclose();
-		}
-	}
-
-	function autofocus(node: HTMLElement) {
-		requestAnimationFrame(() => node.focus());
 	}
 </script>
 
@@ -119,10 +125,11 @@
 <div
 	class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
 	onmousedown={(e) => { if (e.target === e.currentTarget) onclose(); }}
+	onkeydown={handleKeydown}
 	role="dialog"
 	tabindex="-1"
 >
-	<div class="bg-bourbon-900 border border-bourbon-800 rounded-2xl w-[90vw] max-w-3xl min-h-[50vh] max-h-[85vh] flex flex-col overflow-hidden">
+	<div class="bg-bourbon-900 border border-bourbon-800 rounded-2xl w-[90vw] max-w-3xl min-h-[60vh] max-h-[85vh] flex flex-col overflow-hidden">
 		<!-- Header -->
 		<div class="flex items-center justify-between px-6 py-4 border-b border-bourbon-800 shrink-0">
 			<div class="flex items-center gap-3">
@@ -163,18 +170,24 @@
 			</label>
 		</div>
 
-		<!-- Content editor -->
-		<div class="flex-1 overflow-hidden flex flex-col bg-bourbon-950">
-			<textarea
-				bind:value={content}
-				use:autofocus
-				onkeydown={handleKeydown}
-				placeholder="Describe what you want Claude to do...
-
-You can reference code with @file:L10-L25 syntax.
-Use markdown for structure."
-				class="flex-1 w-full bg-transparent text-sm text-bourbon-200 px-6 py-4 resize-none focus:outline-none placeholder:text-bourbon-700 font-mono leading-relaxed select-text"
-			></textarea>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<!-- Block editor -->
+		<div
+			class="flex-1 overflow-y-auto bg-bourbon-950 px-6 py-4"
+			onclick={(e) => {
+				// Click on empty area focuses the last text block
+				if (e.target === e.currentTarget && editorRef) editorRef.focusLast();
+			}}
+		>
+			{#if loaded}
+				<BlockEditor
+					bind:this={editorRef}
+					bind:blocks
+					{repoPath}
+					onchange={() => { blocks = [...blocks]; }}
+					onsubmit={handleSubmit}
+				/>
+			{/if}
 		</div>
 
 		<!-- Footer -->
@@ -188,7 +201,7 @@ Use markdown for structure."
 			{:else}
 				<button
 					onclick={handleSubmit}
-					disabled={!content.trim() || !repoPath}
+					disabled={!serialized.trim() || !repoPath}
 					class="flex items-center gap-1.5 text-xs text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer
 						disabled:opacity-40 disabled:cursor-not-allowed"
 				>

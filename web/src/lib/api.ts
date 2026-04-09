@@ -421,3 +421,19 @@ export function submitDirective(id: number): Promise<{ status: string; target: s
 		body: JSON.stringify({ id })
 	});
 }
+
+// --- Code + Images ---
+
+export function getCodeFiles(repo: string, q?: string): Promise<string[]> {
+	const params = new URLSearchParams({ repo });
+	if (q) params.set('q', q);
+	return request(`/code/files?${params}`);
+}
+
+export async function uploadImage(blob: Blob): Promise<{ path: string; url: string }> {
+	const form = new FormData();
+	form.append('image', blob);
+	const res = await fetch('/api/images/upload', { method: 'POST', body: form });
+	if (!res.ok) throw new Error('Upload failed');
+	return res.json();
+}

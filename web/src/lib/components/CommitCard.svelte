@@ -258,7 +258,7 @@
 
 		<!-- In review -->
 		{#if inReviewCount > 0}
-			<div class="mt-4 pt-3 border-t border-bourbon-800">
+			<div class="mt-3 pt-3 border-t border-bourbon-800">
 				<h3 class="flex items-center gap-2 text-xs font-semibold text-cmd-400 mb-3">
 					<MessageSquarePlus size={12} />
 					{inReviewCount} in review
@@ -276,7 +276,7 @@
 
 		<!-- Flagged commits -->
 		{#if flaggedCount > 0}
-			<div class="mt-4 pt-3 border-t border-bourbon-800">
+			<div class="mt-3 pt-3 border-t border-bourbon-800">
 				<h3 class="flex items-center gap-2 text-xs font-semibold text-run-400 mb-3">
 					<Flag size={12} fill="currentColor" />
 					{flaggedCount} flagged
@@ -296,7 +296,7 @@
 		{#if seenCount > 0}
 			<button
 				onclick={() => showSeen = !showSeen}
-				class="flex items-center gap-2 mt-4 pt-3 border-t border-bourbon-800 text-[10px] font-mono text-bourbon-600 hover:text-bourbon-400 transition-colors cursor-pointer w-full"
+				class="flex items-center gap-2 mt-3 pt-3 border-t border-bourbon-800 text-[10px] font-mono text-bourbon-600 hover:text-bourbon-400 transition-colors cursor-pointer w-full"
 			>
 				<span class="shrink-0">
 					{#if showSeen}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}
