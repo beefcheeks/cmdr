@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { getStroke } from 'perfect-freehand';
 	import { Pen, Eraser, Undo2, Check } from 'lucide-svelte';
 	import type { StrokeData } from '$lib/blocks';
