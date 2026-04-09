@@ -148,5 +148,8 @@ func migrate(d *sql.DB) error {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN refactored INTEGER NOT NULL DEFAULT 0`)
 	}
 
+	// Clean up unused drafts table if it exists
+	d.Exec(`DROP TABLE IF EXISTS drafts`)
+
 	return nil
 }

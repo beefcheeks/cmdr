@@ -19,7 +19,8 @@
 		onclose,
 		onflag,
 		onsubmitreview,
-		onclearreview
+		onclearreview,
+		ondraft
 	}: {
 		commit: GitCommit;
 		diff: string | null;
@@ -29,6 +30,7 @@
 		onflag: () => void;
 		onsubmitreview?: (taskId: number) => void;
 		onclearreview?: () => void;
+		ondraft?: (repoPath: string, content: string) => void;
 	} = $props();
 
 	let comments = $state<ReviewComment[]>([]);
@@ -92,6 +94,25 @@
 		const file = lineFileMap[idx];
 		if (!file) return;
 		openInEditor(commit.repoPath, file, parseLineNumber(idx));
+	}
+
+	function buildCodeRef(startIdx: number, endIdx: number): string {
+		const file = lineFileMap[startIdx];
+		if (!file) return '';
+		const startLine = parseLineNumber(startIdx);
+		const endLine = parseLineNumber(endIdx);
+		if (startLine === endLine) return `@${file}:L${startLine}`;
+		return `@${file}:L${startLine}-L${endLine}`;
+	}
+
+	function handleStartDraft(idx: number) {
+		if (!ondraft) return;
+		const start = selectionStart ?? idx;
+		const end = selectionEnd ?? idx;
+		const lo = Math.min(start, end);
+		const hi = Math.max(start, end);
+		const ref = buildCodeRef(lo, hi);
+		ondraft(commit.repoPath, ref ? `Look at ${ref}\n\n` : '');
 	}
 
 	let hasPendingInput = $derived(activeCommentLine !== null);
@@ -387,13 +408,24 @@
 									onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveComment(); } if (e.key === 'Escape' && !commentDraft.trim()) cancelComment(); }}
 								></textarea>
 								<div class="flex items-center px-4 py-1.5 border-t border-bourbon-800/50">
-									<button
-										onclick={() => handleOpenInEditor(selectionStart ?? idx)}
-										class="flex items-center gap-1.5 text-[10px] text-bourbon-600 hover:text-cmd-400 transition-colors cursor-pointer flex-1"
-									>
-										<FileCode size={12} />
-										open in editor
-									</button>
+									<div class="flex items-center gap-3 flex-1">
+										<button
+											onclick={() => handleOpenInEditor(selectionStart ?? idx)}
+											class="flex items-center gap-1 text-[10px] text-bourbon-600 hover:text-cmd-400 transition-colors cursor-pointer"
+										>
+											<FileCode size={10} />
+											editor
+										</button>
+										{#if ondraft}
+										<button
+											onclick={() => handleStartDraft(idx)}
+											class="flex items-center gap-1 text-[10px] text-bourbon-600 hover:text-cmd-400 transition-colors cursor-pointer"
+										>
+											<Send size={10} />
+											directive
+										</button>
+										{/if}
+									</div>
 									<span class="text-[9px] text-bourbon-700 flex-1 text-center">⌘+Enter to save</span>
 									<div class="flex items-center gap-3 flex-1 justify-end">
 										<button onclick={cancelComment} class="text-[10px] text-bourbon-600 hover:text-bourbon-400 cursor-pointer">cancel</button>
@@ -437,7 +469,7 @@
 
 		<!-- Footer -->
 		<div class="flex items-center justify-between px-6 py-3 border-t border-bourbon-800 shrink-0">
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-3 flex-1">
 				{#if comments.length > 0}
 					<span class="text-[10px] font-mono text-run-400">
 						{comments.length} review comment{comments.length !== 1 ? 's' : ''}
@@ -450,7 +482,7 @@
 					</button>
 				{/if}
 			</div>
-			<div class="flex items-center gap-3">
+			<div class="flex items-center gap-3 flex-1">
 				{#if submitting}
 					<div class="flex items-center gap-2 text-bourbon-600">
 						<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>

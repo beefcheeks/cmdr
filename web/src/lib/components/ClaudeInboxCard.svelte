@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { CheckCircle, XCircle, Wrench, GitPullRequestArrow, X } from 'lucide-svelte';
+	import { CheckCircle, XCircle, Wrench, GitPullRequestArrow, X, Pencil, Plus } from 'lucide-svelte';
 	import { getClaudeTasks, getClaudeTaskResult, dismissClaudeTask, dismissAllClaudeTasks, type ClaudeTask } from '$lib/api';
-	import { events } from '$lib/events';
+	import { events, connection } from '$lib/events';
 
 	let {
-		onviewresult
+		onviewresult,
+		ondraft
 	}: {
 		onviewresult: (task: ClaudeTask, result: string) => void;
+		ondraft: (taskId?: number, repoPath?: string) => void;
 	} = $props();
 
 	let tasks = $state<ClaudeTask[]>([]);
@@ -17,6 +19,7 @@
 
 	// Hide tasks that have completed their full lifecycle (refactored + completed)
 	let visibleTasks = $derived(tasks.filter(t => !(t.refactored && t.status === 'completed')));
+	let draftTasks = $derived(visibleTasks.filter(t => t.status === 'draft'));
 	let activeCount = $derived(visibleTasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring').length);
 	let dismissableCount = $derived(visibleTasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'resolved' || t.status === 'refactoring').length);
 
@@ -34,16 +37,17 @@
 					...(evt.prUrl && { prUrl: evt.prUrl as string }),
 				};
 				tasks = [...tasks];
-			} else {
+			} else if (evt.status === 'pending' || evt.status === 'running') {
+				// Only refetch for new tasks, not updates to already-hidden ones
 				getClaudeTasks().then(t => { tasks = t; }).catch(() => {});
 			}
 		});
 
 		// Refetch on SSE reconnect to catch any missed events
-		let firstStatus = true;
-		unsubStatus = events.on('status', () => {
-			if (firstStatus) { firstStatus = false; return; } // skip initial connect
-			getClaudeTasks().then(t => { tasks = t; }).catch(() => {});
+		unsubStatus = connection.subscribe((c) => {
+			if (c.connected && loaded) {
+				getClaudeTasks().then(t => { tasks = t; }).catch(() => {});
+			}
 		});
 	});
 
@@ -107,19 +111,23 @@
 			{#each visibleTasks as task}
 				<button
 					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
-						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' ? 'hover:bg-bourbon-800/50' : ''}"
+						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'draft' ? 'hover:bg-bourbon-800/50' : ''}"
 					onclick={() => {
-						if (task.status === 'resolved' && task.prUrl) {
+						if (task.status === 'draft') {
+							ondraft(task.id, task.repoPath);
+						} else if (task.status === 'resolved' && task.prUrl) {
 							window.open(task.prUrl, '_blank');
 						} else if (task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring') {
 							viewResult(task);
 						}
 					}}
-					disabled={task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring'}
+					disabled={task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring' && task.status !== 'draft'}
 				>
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">
-						{#if task.status === 'running' || task.status === 'pending'}
+						{#if task.status === 'draft'}
+							<span class="text-cmd-400"><Pencil size={15} /></span>
+						{:else if task.status === 'running' || task.status === 'pending'}
 							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
 						{:else if task.status === 'refactoring'}
 							<span class="text-cmd-400 animate-pulse"><Wrench size={15} /></span>
@@ -179,5 +187,15 @@
 			</div>
 		{/if}
 		{/if}
+
+		<div class="mt-3 pt-3 border-t border-bourbon-800">
+			<button
+				onclick={() => ondraft()}
+				class="flex items-center gap-1.5 text-[10px] font-mono text-bourbon-600 hover:text-cmd-400 transition-colors cursor-pointer"
+			>
+				<Plus size={12} />
+				new directive
+			</button>
+		</div>
 	</div>
 {/if}

@@ -245,6 +245,11 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	// Refactor
 	mux.HandleFunc("/api/review/refactor", handleStartRefactor(database, bus))
 	mux.HandleFunc("/api/claude/tasks/resolve", handleResolveTask(database, bus))
+
+	// Directives (draft → submit via claude_tasks)
+	mux.HandleFunc("/api/directives/create", handleCreateDirective(database))
+	mux.HandleFunc("/api/directives/save", handleSaveDirective(database))
+	mux.HandleFunc("/api/directives/submit", handleSubmitDirective(database))
 }
 
 func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {

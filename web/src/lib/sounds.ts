@@ -6,42 +6,62 @@
 
 let ctx: AudioContext | null = null;
 const buffers = new Map<string, AudioBuffer>();
-const loading = new Map<string, Promise<AudioBuffer>>();
+const rawData = new Map<string, ArrayBuffer>();
+const fetching = new Map<string, Promise<ArrayBuffer>>();
 
 function getContext(): AudioContext {
 	if (!ctx) ctx = new AudioContext();
-	if (ctx.state === 'suspended') ctx.resume();
 	return ctx;
 }
 
-async function loadBuffer(src: string): Promise<AudioBuffer> {
-	const cached = buffers.get(src);
+async function ensureResumed(): Promise<AudioContext> {
+	const audioCtx = getContext();
+	if (audioCtx.state === 'suspended') {
+		await audioCtx.resume();
+	}
+	return audioCtx;
+}
+
+// Prefetch raw audio data without creating AudioContext
+async function fetchRaw(src: string): Promise<ArrayBuffer> {
+	const cached = rawData.get(src);
 	if (cached) return cached;
 
-	const inflight = loading.get(src);
+	const inflight = fetching.get(src);
 	if (inflight) return inflight;
 
 	const promise = fetch(src)
 		.then((r) => r.arrayBuffer())
-		.then((data) => getContext().decodeAudioData(data))
-		.then((buffer) => {
-			buffers.set(src, buffer);
-			loading.delete(src);
-			return buffer;
+		.then((data) => {
+			rawData.set(src, data);
+			fetching.delete(src);
+			return data;
 		});
 
-	loading.set(src, promise);
+	fetching.set(src, promise);
 	return promise;
 }
 
-export function playSound(src: string, volume = 0.5) {
+async function getBuffer(src: string): Promise<AudioBuffer> {
+	const cached = buffers.get(src);
+	if (cached) return cached;
+
+	const data = await fetchRaw(src);
 	const audioCtx = getContext();
+	const buffer = await audioCtx.decodeAudioData(data.slice(0));
+	buffers.set(src, buffer);
+	return buffer;
+}
+
+export async function playSound(src: string, volume = 0.5) {
+	const audioCtx = await ensureResumed();
 	const cached = buffers.get(src);
 
 	if (cached) {
 		fire(audioCtx, cached, volume);
 	} else {
-		loadBuffer(src).then((buf) => fire(audioCtx, buf, volume));
+		const buf = await getBuffer(src);
+		fire(audioCtx, buf, volume);
 	}
 }
 
@@ -56,9 +76,9 @@ function fire(audioCtx: AudioContext, buffer: AudioBuffer, volume: number) {
 	source.start();
 }
 
-// Preload sounds so first play is instant
+// Preload raw audio data (no AudioContext needed)
 export function preload(...srcs: string[]) {
-	srcs.forEach(loadBuffer);
+	srcs.forEach(fetchRaw);
 }
 
 export const SFX = {

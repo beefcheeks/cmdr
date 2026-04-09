@@ -80,6 +80,20 @@ func CreateRefactorWindow(windowName, dir, shellCmd string) (string, error) {
 	return refactorSession + ":" + windowName, nil
 }
 
+// CreateDraftWindow opens a new window in an existing session with the given
+// name, working directory, and initial command. Switches the client to that session.
+func CreateDraftWindow(sessionName, windowName, dir, shellCmd string) (string, error) {
+	args := []string{"bash", "-c", shellCmd}
+	cmdArgs := []string{"new-window", "-t", sessionName, "-n", windowName, "-c", dir}
+	cmdArgs = append(cmdArgs, args...)
+	if out, err := tmuxCmd(cmdArgs...).CombinedOutput(); err != nil {
+		return "", fmt.Errorf("tmux new-window: %s: %w", strings.TrimSpace(string(out)), err)
+	}
+
+	_ = SwitchClient(sessionName)
+	return sessionName + ":" + windowName, nil
+}
+
 func gitOutput(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	out, err := cmd.Output()

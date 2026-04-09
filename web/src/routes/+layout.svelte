@@ -5,9 +5,10 @@
 	import { onDestroy } from 'svelte';
 	import { events } from '$lib/events';
 	import type { DaemonStatus } from '$lib/api';
+	import { onMount } from 'svelte';
 	import { playSound, preload, SFX } from '$lib/sounds';
 
-	preload(SFX.hover, SFX.click, SFX.newCommits);
+	onMount(() => preload(SFX.hover, SFX.click, SFX.newCommits));
 
 	let { children } = $props();
 	let status: DaemonStatus | null = $state(null);

@@ -296,7 +296,7 @@
 		{#if seenCount > 0}
 			<button
 				onclick={() => showSeen = !showSeen}
-				class="flex items-center gap-2 mt-4 pt-3 border-t border-bourbon-800 text-xs text-bourbon-600 hover:text-bourbon-400 transition-colors cursor-pointer w-full"
+				class="flex items-center gap-2 mt-4 pt-3 border-t border-bourbon-800 text-[10px] font-mono text-bourbon-600 hover:text-bourbon-400 transition-colors cursor-pointer w-full"
 			>
 				<span class="shrink-0">
 					{#if showSeen}<ChevronDown size={12} />{:else}<ChevronRight size={12} />{/if}

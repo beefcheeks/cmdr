@@ -322,7 +322,7 @@ export function submitReview(repoPath: string, sha: string): Promise<{ id: numbe
 export interface ClaudeTask {
 	id: number;
 	type: string;
-	status: 'pending' | 'running' | 'completed' | 'failed' | 'refactoring' | 'resolved';
+	status: 'draft' | 'pending' | 'running' | 'completed' | 'failed' | 'refactoring' | 'resolved';
 	repoPath: string;
 	commitSha: string;
 	title?: string;
@@ -393,5 +393,31 @@ export function pullRepo(repoPath: string): Promise<{ status: string; message: s
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ repoPath })
+	});
+}
+
+// --- Directives (draft claude tasks) ---
+
+export function createDirective(repoPath: string, content: string = ''): Promise<{ id: number; status: string }> {
+	return request('/directives/create', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ repoPath, content })
+	});
+}
+
+export function saveDirective(id: number, repoPath: string, content: string): Promise<{ status: string }> {
+	return request('/directives/save', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id, repoPath, content })
+	});
+}
+
+export function submitDirective(id: number): Promise<{ status: string; target: string; session: string }> {
+	return request('/directives/submit', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id })
 	});
 }

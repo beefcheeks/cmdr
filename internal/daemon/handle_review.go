@@ -395,17 +395,23 @@ func handleGetClaudeTaskResult(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var result, status, errMsg string
-		err := db.QueryRow(`SELECT result, status, error_msg FROM claude_tasks WHERE id = ?`, id).
-			Scan(&result, &status, &errMsg)
+		var result, prompt, status, errMsg string
+		err := db.QueryRow(`SELECT result, prompt, status, error_msg FROM claude_tasks WHERE id = ?`, id).
+			Scan(&result, &prompt, &status, &errMsg)
 		if err != nil {
 			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
 			return
 		}
 
+		// For draft tasks, return the prompt as the result
+		content := result
+		if status == "draft" {
+			content = prompt
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
-			"result":   result,
+			"result":   content,
 			"status":   status,
 			"errorMsg": errMsg,
 		})

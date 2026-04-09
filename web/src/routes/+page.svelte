@@ -10,6 +10,7 @@
 	import ClaudeInboxCard from '$lib/components/ClaudeInboxCard.svelte';
 	import DiffModal from '$lib/components/DiffModal.svelte';
 	import ReviewResultModal from '$lib/components/ReviewResultModal.svelte';
+	import DraftModal from '$lib/components/DraftModal.svelte';
 
 	let sessions: TmuxSession[] = $state([]);
 	let claudeSessions: ClaudeSession[] = $state([]);
@@ -112,14 +113,23 @@
 	// --- Review result modal ---
 	let reviewResult: string | null = $state(null);
 	let reviewTask: ClaudeTask | null = $state(null);
+
+	// --- Draft modal ---
+	let showDraft = $state(false);
+	let draftInitial: { repoPath?: string; content?: string; taskId?: number } | undefined = $state(undefined);
+
+	function openDraft(repoPath?: string, content?: string, taskId?: number) {
+		draftInitial = { repoPath, content, taskId };
+		showDraft = true;
+	}
 </script>
 
 <!-- Greeting -->
 <div class="mb-6">
 	<h1 class="font-display text-3xl font-bold text-bourbon-100 lowercase">{greeting}, mike</h1>
-	<p class="text-bourbon-600 mt-1">
-		{dateStr}
-		&middot; {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+		<p class="text-bourbon-600 mt-1">
+			{dateStr}
+			&middot; {sessions.length} session{sessions.length !== 1 ? 's' : ''}
 		&middot; {claudeSessions.length} claude instance{claudeSessions.length !== 1 ? 's' : ''}
 		{#if unseenCount > 0}
 			&middot; {unseenCount} unseen commit{unseenCount !== 1 ? 's' : ''}
@@ -144,7 +154,10 @@
 
 	<!-- Right column: Inbox + Commits -->
 	<div class="flex flex-col gap-4">
-		<ClaudeInboxCard onviewresult={(task, r) => { reviewTask = task; reviewResult = r; }} />
+		<ClaudeInboxCard
+			onviewresult={(task, r) => { reviewTask = task; reviewResult = r; }}
+			ondraft={(taskId, repoPath) => openDraft(repoPath, undefined, taskId)}
+		/>
 
 		{#if commitsLoaded}
 			<CommitCard bind:commits onopendiff={handleOpenDiff} />
@@ -179,6 +192,7 @@
 		onclose={closeDiffModal}
 		onflag={handleToggleFlag}
 		onsubmitreview={(taskId) => { closeDiffModal(); }}
+		ondraft={(repoPath, content) => { closeDiffModal(); openDraft(repoPath, content); }}
 		onclearreview={() => {
 			if (modalCommit) {
 				commits = commits.map(c => c.id === modalCommit!.id ? { ...c, reviewCount: 0 } : c);
@@ -191,4 +205,12 @@
 <!-- Review Result Modal -->
 {#if reviewResult}
 	<ReviewResultModal result={reviewResult} taskId={reviewTask?.id ?? 0} prUrl={reviewTask?.prUrl} onclose={() => { reviewResult = null; reviewTask = null; }} onupdate={(r) => { reviewResult = r; }} />
+{/if}
+
+<!-- Draft Modal -->
+{#if showDraft}
+	<DraftModal
+		initial={draftInitial}
+		onclose={() => { showDraft = false; draftInitial = undefined; }}
+	/>
 {/if}
