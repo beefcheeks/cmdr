@@ -116,7 +116,7 @@
 		const lo = Math.min(start, end);
 		const hi = Math.max(start, end);
 		const ref = buildCodeRef(lo, hi);
-		ondraft(commit.repoPath, ref ? `Look at ${ref}\n\n` : '');
+		ondraft(commit.repoPath, ref ? `${ref}\n\n` : '');
 	}
 
 	let hasPendingInput = $derived(activeCommentLine !== null);
@@ -556,6 +556,9 @@
 						<Pencil size={10} />
 						commit note
 					</button>
+				{/if}
+				{#if (comments.length > 0 || commitNoteSaved) && !commitNoteOpen}
+					<span class="text-bourbon-800">·</span>
 				{/if}
 				{#if comments.length > 0 || commitNoteSaved}
 					<span class="text-[10px] font-mono text-run-400">

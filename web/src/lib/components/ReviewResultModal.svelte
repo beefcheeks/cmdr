@@ -142,6 +142,15 @@
 	async function handleRefactor() {
 		refactoring = true;
 		try {
+			// Flush any pending changes before starting
+			if (stagedCount > 0) {
+				const updated: ParsedReview = {
+					preamble: parsedReview!.preamble,
+					sections: parsedReview!.sections.filter((_, i) => !stagedDeletions.has(i))
+				};
+				await persistResult(reconstructMarkdown(updated));
+				stagedDeletions = new Set();
+			}
 			await startRefactor(taskId);
 			onclose();
 		} catch (e) {

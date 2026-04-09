@@ -40,7 +40,8 @@ export interface ParsedReview {
 //   ### [1 — Architectural] `editMenu` defined but never registered
 //   ### [P1] `updateSocialPost` handler passes raw `req.body`
 //   ## [P1] finding title
-const SECTION_RE = /^#{2,3} \[(?:P)?(\d+)(?:[\.\s—\-–]+([^\]]*))?\]\s*(.+)$/;
+//   ### 5. DRY] finding title (missing opening bracket — LLM inconsistency)
+const SECTION_RE = /^#{2,3} \[?(?:P)?(\d+)(?:[\.\s—\-–]+([^\]]*))?\]\s*(.+)$/;
 
 /**
  * Parse review markdown into preamble + sections.

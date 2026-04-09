@@ -22,8 +22,8 @@
 
 	let unseenCount = $derived($commitsStore.filter(c => !c.seen).length);
 	let inReviewCount = $derived($commitsStore.filter(c => c.reviewCount > 0).length);
-	let flaggedCount = $derived($commitsStore.filter(c => c.flagged && c.reviewCount === 0).length);
-	let seenCount = $derived($commitsStore.filter(c => c.seen && !c.flagged && c.reviewCount === 0).length);
+	let flaggedCount = $derived($commitsStore.filter(c => c.flagged).length);
+	let seenCount = $derived($commitsStore.filter(c => c.seen).length);
 
 	function groupByRepo(list: GitCommit[]): { name: string; path: string; commits: GitCommit[] }[] {
 		const groups: { name: string; path: string; commits: GitCommit[] }[] = [];
@@ -42,8 +42,8 @@
 
 	let unseenByRepo = $derived(groupByRepo($commitsStore.filter(c => !c.seen)));
 	let inReviewByRepo = $derived(groupByRepo($commitsStore.filter(c => c.reviewCount > 0)));
-	let flaggedByRepo = $derived(groupByRepo($commitsStore.filter(c => c.flagged && c.reviewCount === 0)));
-	let seenByRepo = $derived(groupByRepo($commitsStore.filter(c => c.seen && !c.flagged && c.reviewCount === 0)));
+	let flaggedByRepo = $derived(groupByRepo($commitsStore.filter(c => c.flagged)));
+	let seenByRepo = $derived(groupByRepo($commitsStore.filter(c => c.seen)));
 
 	let pullingRepo: string | null = $state(null);
 
