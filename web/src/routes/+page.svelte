@@ -86,14 +86,12 @@
 	// --- Diff modal ---
 	let modalCommit: GitCommit | null = $state(null);
 	let modalDiff: string | null = $state(null);
-	let modalFormat: 'delta' | 'unified' = $state('unified');
 	let modalFiles: string[] = $state([]);
 	let modalLoading = $state(false);
 
-	function handleOpenDiff(commit: GitCommit, diff: string, format: 'delta' | 'unified', files: string[]) {
+	function handleOpenDiff(commit: GitCommit, diff: string, files: string[]) {
 		modalCommit = commit;
 		modalDiff = diff;
-		modalFormat = format;
 		modalFiles = files;
 		modalLoading = false;
 	}
@@ -176,7 +174,6 @@
 	<DiffModal
 		commit={modalCommit}
 		diff={modalDiff}
-		format={modalFormat}
 		files={modalFiles}
 		loading={modalLoading}
 		onclose={closeDiffModal}

@@ -378,3 +378,11 @@ export function dismissAllClaudeTasks(): Promise<{ dismissed: number }> {
 		body: JSON.stringify({ all: 'completed' })
 	});
 }
+
+export function openInEditor(repoPath: string, file: string, line: number): Promise<{ status: string }> {
+	return request('/editor/open', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ repoPath, file, line })
+	});
+}

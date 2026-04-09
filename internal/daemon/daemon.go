@@ -201,6 +201,7 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/tmux/sessions/focus", handleTmuxFocus())
 	mux.HandleFunc("/api/tmux/sessions/kill", handleTmuxKill())
 	mux.HandleFunc("/api/open", handleOpenFolder())
+	mux.HandleFunc("/api/editor/open", handleEditorOpen())
 	mux.HandleFunc("/api/claude/sessions", handleClaudeSessions())
 	mux.HandleFunc("/api/events", handleEvents(bus))
 

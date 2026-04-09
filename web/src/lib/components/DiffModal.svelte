@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { X, ExternalLink, Flag, Send, Trash2, Plus, Pencil, MessageSquare } from 'lucide-svelte';
+	import { X, ExternalLink, Flag, Send, Trash2, Plus, Pencil, MessageSquare, FileCode } from 'lucide-svelte';
 	import {
 		getReviewComments,
 		saveReviewComment,
 		deleteReviewComment,
 		submitReview,
+		openInEditor,
 		type GitCommit,
 		type ReviewComment
 	} from '$lib/api';
@@ -12,7 +13,6 @@
 	let {
 		commit,
 		diff,
-		format,
 		files,
 		loading,
 		onclose,
@@ -22,7 +22,6 @@
 	}: {
 		commit: GitCommit;
 		diff: string | null;
-		format: 'delta' | 'unified';
 		files: string[];
 		loading: boolean;
 		onclose: () => void;
@@ -42,39 +41,41 @@
 
 	let diffLines = $derived(diff ? diff.split('\n') : []);
 
-	// Parse file line numbers from unified diff hunk headers
-	interface LineInfo {
-		oldNum: number | null;
-		newNum: number | null;
+	// Track which file each diff line belongs to (from "diff --git a/X b/X" headers)
+	// In delta format, the line may be prefixed with HTML tags like <span id="file-0"></span>
+	let lineFileMap = $derived.by(() => {
+		const map: (string | null)[] = [];
+		let currentFile: string | null = null;
+		for (const line of diffLines) {
+			const m = line.match(/diff --git a\/(.+) b\/(.+)/);
+			if (m) currentFile = m[2];
+			map.push(currentFile);
+		}
+		return map;
+	});
+
+	// Extract the new-side line number from delta HTML.
+	// Delta structure: ...<span>OLD</span><span>⋮</span><span>NEW</span><span>│</span>...
+	// We grab the number between ⋮ and │ (new-side), falling back to the one before ⋮ (old-side).
+	function parseLineNumber(idx: number): number {
+		const line = diffLines[idx];
+		if (!line) return 1;
+		// Strip HTML tags to get the text content for easier parsing
+		const text = line.replace(/<[^>]+>/g, '');
+		// Match: old⋮new│  (numbers may be spaces when absent)
+		const m = text.match(/(\d+)?\s*⋮\s*(\d+)?\s*│/);
+		if (m) {
+			if (m[2]) return parseInt(m[2]); // new-side
+			if (m[1]) return parseInt(m[1]); // old-side fallback
+		}
+		return 1;
 	}
 
-	let lineNumbers = $derived.by(() => {
-		if (format === 'delta') return [] as LineInfo[];
-		const result: LineInfo[] = [];
-		let oldLine = 0;
-		let newLine = 0;
-		for (const line of diffLines) {
-			const hunkMatch = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-			if (hunkMatch) {
-				oldLine = parseInt(hunkMatch[1]);
-				newLine = parseInt(hunkMatch[2]);
-				result.push({ oldNum: null, newNum: null });
-			} else if (line.startsWith('diff ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ')) {
-				result.push({ oldNum: null, newNum: null });
-			} else if (line.startsWith('-')) {
-				result.push({ oldNum: oldLine, newNum: null });
-				oldLine++;
-			} else if (line.startsWith('+')) {
-				result.push({ oldNum: null, newNum: newLine });
-				newLine++;
-			} else {
-				result.push({ oldNum: oldLine, newNum: newLine });
-				oldLine++;
-				newLine++;
-			}
-		}
-		return result;
-	});
+	function handleOpenInEditor(idx: number) {
+		const file = lineFileMap[idx];
+		if (!file) return;
+		openInEditor(commit.repoPath, file, parseLineNumber(idx));
+	}
 
 	let hasPendingInput = $derived(activeCommentLine !== null);
 
@@ -206,15 +207,6 @@
 		submitting = false;
 	}
 
-	function lineClass(line: string): string {
-		if (format === 'delta') return '';
-		if (line.startsWith('+') && !line.startsWith('+++')) return 'text-green-400 bg-green-950/30';
-		if (line.startsWith('-') && !line.startsWith('---')) return 'text-red-400 bg-red-950/30';
-		if (line.startsWith('@@')) return 'text-cmd-400';
-		if (line.startsWith('diff ')) return 'text-bourbon-500 font-bold';
-		return 'text-bourbon-500';
-	}
-
 	function autofocus(node: HTMLElement) {
 		requestAnimationFrame(() => node.focus());
 	}
@@ -306,6 +298,8 @@
 					{#each diffLines as line, idx}
 						{@const commented = isLineCommented(idx)}
 						{@const selected = isLineSelected(idx)}
+						{@const isDiffHeader = line.includes('diff --git')}
+						{@const isMetadata = /^(<span[^>]*><\/span>)?(diff |index |---|\+\+\+|@@)/.test(line)}
 						<div
 							class="flex group/line
 								{selected ? 'bg-run-500/10' :
@@ -319,7 +313,15 @@
 									{selected ? 'border-r-run-500' :
 									 commented ? 'border-r-cmd-500/50' :
 									 'border-r-bourbon-800/50'}">
-									{#if !commented}
+									{#if isDiffHeader}
+									<button
+										onclick={(e) => { e.stopPropagation(); handleOpenInEditor(idx); }}
+										class="w-4 h-4 flex items-center justify-center text-bourbon-600 hover:text-cmd-400 transition-colors cursor-pointer"
+										title="Open in editor"
+									>
+										<FileCode size={12} />
+									</button>
+									{:else if !commented && !isMetadata}
 									<button
 										onmousedown={(e) => { e.preventDefault(); handleGutterMouseDown(idx); }}
 										class="w-4 h-4 flex items-center justify-center rounded-sm
@@ -332,23 +334,9 @@
 									</button>
 								{/if}
 								</div>
-								{#if format !== 'delta'}
-									{#if lineNumbers[idx]}
-										<span class="w-10 text-right pr-1 text-[10px] leading-relaxed select-none self-center pt-px
-											{lineNumbers[idx].oldNum && !lineNumbers[idx].newNum ? 'text-red-400/60' : 'text-bourbon-700'}">{lineNumbers[idx].oldNum ?? ''}</span>
-										<span class="w-10 text-right pr-2 text-[10px] leading-relaxed select-none self-center pt-px
-											{lineNumbers[idx].newNum && !lineNumbers[idx].oldNum ? 'text-green-400/60' : 'text-bourbon-700'}">{lineNumbers[idx].newNum ?? ''}</span>
-									{:else}
-										<span class="w-20"></span>
-									{/if}
-								{/if}
-							</div>
+								</div>
 							<!-- Content -->
-							{#if format === 'delta'}
-								<span class="flex-1 px-2 text-bourbon-400 select-text py-px whitespace-pre">{@html line}</span>
-							{:else}
-								<span class="flex-1 px-2 select-text py-px {lineClass(line)}">{line}</span>
-							{/if}
+							<span class="flex-1 px-2 text-bourbon-400 select-text py-px whitespace-pre">{@html line}</span>
 						</div>
 
 						<!-- Inline comment input (pending — amber/run scheme) -->
@@ -360,11 +348,18 @@
 									placeholder="Add review comment..."
 									class="w-full bg-transparent text-xs text-bourbon-200 px-4 py-3 resize-none focus:outline-none placeholder:text-bourbon-700 select-text"
 									rows="2"
-									onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveComment(); } if (e.key === 'Escape') cancelComment(); }}
+									onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveComment(); } if (e.key === 'Escape' && !commentDraft.trim()) cancelComment(); }}
 								></textarea>
-								<div class="flex items-center justify-between px-4 py-1.5 border-t border-bourbon-800/50">
-									<span class="text-[9px] text-bourbon-700">⌘+Enter to save</span>
-									<div class="flex items-center gap-3">
+								<div class="flex items-center px-4 py-1.5 border-t border-bourbon-800/50">
+									<button
+										onclick={() => handleOpenInEditor(selectionStart ?? idx)}
+										class="flex items-center gap-1.5 text-[10px] text-bourbon-600 hover:text-cmd-400 transition-colors cursor-pointer flex-1"
+									>
+										<FileCode size={12} />
+										open in editor
+									</button>
+									<span class="text-[9px] text-bourbon-700 flex-1 text-center">⌘+Enter to save</span>
+									<div class="flex items-center gap-3 flex-1 justify-end">
 										<button onclick={cancelComment} class="text-[10px] text-bourbon-600 hover:text-bourbon-400 cursor-pointer">cancel</button>
 										<button onclick={saveComment} class="text-[10px] text-run-400 hover:text-run-300 cursor-pointer">save</button>
 									</div>

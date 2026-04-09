@@ -14,7 +14,7 @@
 		onopendiff
 	}: {
 		commits: GitCommit[];
-		onopendiff: (commit: GitCommit, diff: string, format: 'delta' | 'unified', files: string[]) => void;
+		onopendiff: (commit: GitCommit, diff: string, files: string[]) => void;
 	} = $props();
 
 	let expandedCommit: string | null = $state(null);
@@ -75,9 +75,9 @@
 
 		try {
 			const result = await getCommitDiff(commit.repoPath, commit.sha);
-			onopendiff(commit, result.diff, result.format, result.files || []);
+			onopendiff(commit, result.diff, result.files || []);
 		} catch {
-			onopendiff(commit, '(failed to load diff)', 'unified', []);
+			onopendiff(commit, '(failed to load diff)', []);
 		}
 	}
 
