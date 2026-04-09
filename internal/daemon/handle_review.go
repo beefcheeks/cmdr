@@ -158,9 +158,14 @@ func handleSubmitReview(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		defer rows.Close()
 
 		var annotations []reviewAnnotation
+		var commitNote string
 		for rows.Next() {
 			var a reviewAnnotation
 			if err := rows.Scan(&a.lineStart, &a.lineEnd, &a.comment); err != nil {
+				continue
+			}
+			if a.lineStart == 0 && a.lineEnd == 0 {
+				commitNote = a.comment
 				continue
 			}
 			annotations = append(annotations, a)
@@ -212,6 +217,7 @@ func handleSubmitReview(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			Message:     message,
 			Diff:        diffText,
 			Annotations: promptAnnotations,
+			CommitNote:  commitNote,
 		})
 		if err != nil {
 			http.Error(w, jsonErr(err), http.StatusInternalServerError)

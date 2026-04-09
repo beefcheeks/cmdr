@@ -15,6 +15,12 @@ You are a senior engineer reviewing a commit for **codebase health**. Your job i
 ## Project Context
 
 Before reviewing, check `docs/PATTERNS*.md` files if any exist — these define architectural patterns, layer responsibilities, and anti-patterns specific to this project. Only reference patterns that are **relevant to the files touched in this diff**.
+{{if .CommitNote}}
+
+## Reviewer's Note
+The reviewer has provided the following general note about this commit:
+> {{.CommitNote}}
+{{end}}
 {{if .Annotations}}
 
 ## Reviewer's Annotations
@@ -66,10 +72,11 @@ Does the change introduce duplication? Look for:
 - Copy-pasted logic that should be extracted into a shared function
 - Near-identical implementations that differ only in minor details
 - Patterns repeated across files that indicate a missing abstraction
-{{if .Annotations}}
+{{if or .Annotations .CommitNote}}
 
-### Reviewer's Annotations
-Address each annotation directly:
+### Reviewer's Notes & Annotations
+{{if .CommitNote}}- Address the reviewer's general note about this commit{{end}}
+{{if .Annotations}}- Address each line annotation directly{{end}}
 - Is the concern valid given the project's conventions?
 - If yes, incorporate the reviewer's direction into the finding's plan
 - If no, explain why the current approach is acceptable

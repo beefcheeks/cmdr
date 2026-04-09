@@ -32,6 +32,7 @@ type ReviewData struct {
 	Message     string
 	Diff        string
 	Annotations []ReviewAnnotation
+	CommitNote  string // general reviewer note (not tied to specific lines)
 }
 
 // Review renders the review prompt template.

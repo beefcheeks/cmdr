@@ -42,6 +42,12 @@
 	let pulling = $state(false);
 	let pullResult: { status: string; message: string } | null = $state(null);
 
+	// Commit-level note (lineStart=0, lineEnd=0)
+	let commitNote = $state('');
+	let commitNoteSaved = $state('');
+	let commitNoteOpen = $state(false);
+	let savingNote = $state(false);
+
 	async function handlePull() {
 		pulling = true;
 		pullResult = null;
@@ -118,7 +124,15 @@
 	$effect(() => {
 		if (diff && !commentsLoaded) {
 			getReviewComments(commit.repoPath, commit.sha)
-				.then(c => { comments = c; })
+				.then(c => {
+					const note = c.find(x => x.lineStart === 0 && x.lineEnd === 0);
+					if (note) {
+						commitNote = note.comment;
+						commitNoteSaved = note.comment;
+						commitNoteOpen = true;
+					}
+					comments = c.filter(x => x.lineStart > 0);
+				})
 				.catch(() => {})
 				.finally(() => { commentsLoaded = true; });
 		}
@@ -223,6 +237,32 @@
 		} catch { /* silent */ }
 	}
 
+	async function saveCommitNote() {
+		if (!commitNote.trim()) return;
+		savingNote = true;
+		try {
+			await saveReviewComment({
+				repoPath: commit.repoPath,
+				sha: commit.sha,
+				lineStart: 0,
+				lineEnd: 0,
+				comment: commitNote.trim()
+			});
+			commitNoteSaved = commitNote.trim();
+		} catch { /* silent */ }
+		savingNote = false;
+	}
+
+	async function clearCommitNote() {
+		// Find and delete the persisted note
+		const all = await getReviewComments(commit.repoPath, commit.sha);
+		const note = all.find(x => x.lineStart === 0 && x.lineEnd === 0);
+		if (note) await deleteReviewComment(note.id);
+		commitNote = '';
+		commitNoteSaved = '';
+		commitNoteOpen = false;
+	}
+
 	async function handleClearComments() {
 		for (const c of comments) {
 			try { await deleteReviewComment(c.id); } catch { /* silent */ }
@@ -230,14 +270,22 @@
 		comments = [];
 		activeCommentLine = null;
 		commentDraft = '';
+		await clearCommitNote();
 		onclearreview?.();
 	}
 
 	async function handleSubmitReview() {
 		submitting = true;
 		try {
+			// Save unsaved commit note before submitting
+			if (commitNote.trim() && commitNote.trim() !== commitNoteSaved) {
+				await saveCommitNote();
+			}
 			await submitReview(commit.repoPath, commit.sha);
 			comments = [];
+			commitNote = '';
+			commitNoteSaved = '';
+			commitNoteOpen = false;
 			onsubmitreview?.();
 		} catch { /* silent */ }
 		submitting = false;
@@ -353,7 +401,7 @@
 						<div
 							class="flex group/line
 								{selected ? 'bg-run-500/10' :
-								 commented ? 'bg-cmd-500/5' :
+								 commented ? 'bg-cmd-500/20' :
 								 'hover:bg-bourbon-900/50'}"
 							onmouseenter={() => handleLineMouseEnter(idx)}
 						>
@@ -437,21 +485,23 @@
 								</div>
 							<div class="flex-1 flex items-center border-l border-l-cmd-400/50 bg-cmd-500/8 -translate-x-px px-4 py-2.5">
 								<span class="flex-1 text-xs text-bourbon-200 select-text">{existingComment.comment}</span>
-								<button
-									onclick={() => startEditComment(existingComment)}
-									class="shrink-0 text-bourbon-700 hover:text-cmd-400 transition-colors cursor-pointer ml-3
-										{hasPendingInput ? 'pointer-events-none opacity-30' : ''}"
-									title="Edit comment"
-								>
-									<Pencil size={14} strokeWidth={2} />
-								</button>
-								<button
-									onclick={() => removeComment(existingComment)}
-									class="shrink-0 text-bourbon-700 hover:text-red-400 transition-colors cursor-pointer ml-2"
-									title="Remove comment"
-								>
-									<Trash2 size={14} />
-								</button>
+								<div class="sticky right-0 z-10 flex items-center gap-2 pl-6 pr-1 bg-cmd-900">
+									<button
+										onclick={() => startEditComment(existingComment)}
+										class="shrink-0 text-bourbon-700 hover:text-cmd-400 transition-colors cursor-pointer
+											{hasPendingInput ? 'pointer-events-none opacity-30' : ''}"
+										title="Edit comment"
+									>
+										<Pencil size={14} strokeWidth={2} />
+									</button>
+									<button
+										onclick={() => removeComment(existingComment)}
+										class="shrink-0 text-bourbon-700 hover:text-red-400 transition-colors cursor-pointer"
+										title="Remove comment"
+									>
+										<Trash2 size={14} />
+									</button>
+								</div>
 							</div>
 							</div>
 						{/if}
@@ -460,12 +510,56 @@
 			{/if}
 		</div>
 
+		<!-- Commit note -->
+		{#if commitNoteOpen}
+			<div class="border-t border-bourbon-800 shrink-0 px-6 py-3 bg-bourbon-900/50">
+				<div class="flex items-center justify-between mb-2">
+					<span class="text-[10px] font-display font-bold uppercase tracking-widest text-run-500">Commit Note</span>
+					<div class="flex items-center gap-2">
+						{#if savingNote}
+							<span class="text-[9px] font-mono text-bourbon-600">saving...</span>
+						{:else if commitNote.trim() && commitNote.trim() !== commitNoteSaved}
+							<button
+								onclick={saveCommitNote}
+								class="text-[10px] font-mono text-run-400 hover:text-run-300 cursor-pointer"
+							>save</button>
+						{:else if commitNoteSaved}
+							<span class="text-[9px] font-mono text-bourbon-700">saved</span>
+						{/if}
+						<button
+							onclick={clearCommitNote}
+							class="text-bourbon-700 hover:text-bourbon-400 transition-colors cursor-pointer"
+						>
+							<X size={12} />
+						</button>
+					</div>
+				</div>
+				<textarea
+					use:autofocus
+					bind:value={commitNote}
+					placeholder="General notes about this commit..."
+					class="w-full bg-bourbon-950 border border-bourbon-800 rounded-lg px-3 py-2 text-xs text-bourbon-200 resize-none focus:outline-none focus:border-run-500/50 placeholder:text-bourbon-700"
+					rows="3"
+					onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveCommitNote(); } }}
+				></textarea>
+			</div>
+		{/if}
+
 		<!-- Footer -->
 		<div class="flex items-center justify-between px-6 py-3 border-t border-bourbon-800 shrink-0">
 			<div class="flex items-center gap-3 flex-1">
-				{#if comments.length > 0}
+				{#if !commitNoteOpen}
+					<button
+						onclick={() => { commitNoteOpen = true; }}
+						class="flex items-center gap-1 text-[10px] font-mono text-bourbon-600 hover:text-run-400 transition-colors cursor-pointer"
+					>
+						<Pencil size={10} />
+						commit note
+					</button>
+				{/if}
+				{#if comments.length > 0 || commitNoteSaved}
 					<span class="text-[10px] font-mono text-run-400">
-						{comments.length} review comment{comments.length !== 1 ? 's' : ''}
+						{comments.length + (commitNoteSaved ? 1 : 0)} review note{comments.length + (commitNoteSaved ? 1 : 0) !== 1 ? 's' : ''}
 					</span>
 					<button
 						onclick={handleClearComments}
@@ -487,7 +581,7 @@
 						class="flex items-center gap-1.5 text-xs text-run-400 hover:text-run-300 transition-colors cursor-pointer"
 					>
 						<Send size={12} />
-						{comments.length > 0 ? 'Submit review' : 'Review'}
+						{comments.length > 0 || commitNoteSaved ? 'Submit review' : 'Review'}
 					</button>
 				{/if}
 			</div>
