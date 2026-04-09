@@ -55,9 +55,9 @@
 			{#each [...(data?.formulae ?? []), ...(data?.casks ?? [])] as pkg}
 				<div class="group flex items-center gap-3 text-sm py-1">
 					<span class="text-bourbon-100 font-mono text-xs">{pkg.name}</span>
-					<span class="text-bourbon-600 font-mono text-[10px]">{pkg.installed_versions[0]}</span>
+					<span class="text-bourbon-600 font-mono text-[10px] max-w-32 truncate" title={pkg.installed_versions[0]}>{pkg.installed_versions[0]}</span>
 					<span class="text-bourbon-700 text-[10px]">→</span>
-					<span class="text-run-400 font-mono text-[10px]">{pkg.current_version}</span>
+					<span class="text-run-400 font-mono text-[10px] max-w-32 truncate" title={pkg.current_version}>{pkg.current_version}</span>
 					{#if upgrading === pkg.name}
 						<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin ml-auto"></div>
 					{:else}

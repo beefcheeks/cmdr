@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { X, Send, Trash2 } from 'lucide-svelte';
+	import { compositeAndSerialize } from '$lib/composite';
 	import {
 		getRepos,
 		getClaudeTaskResult,
-		createDirective,
 		saveDirective,
 		submitDirective,
-		dismissClaudeTask,
 		type MonitoredRepo
 	} from '$lib/api';
+	import { create as createTask, dismiss as dismissTask } from '$lib/taskStore';
 	import {
 		type Block,
 		parseBlocks,
@@ -34,6 +34,7 @@
 	let repoPath = $state('');
 	let saving = $state(false);
 	let submitting = $state(false);
+	let submitProgress = $state('');
 	let lastSavedContent = '';
 	let lastSavedRepo = '';
 	let loaded = $state(false);
@@ -56,7 +57,7 @@
 				content = result || '';
 			} catch { /* use initial content */ }
 		} else {
-			const res = await createDirective(repoPath, content);
+			const res = await createTask(repoPath, content);
 			taskId = res.id;
 		}
 
@@ -95,21 +96,38 @@
 	async function handleSubmit() {
 		if (!taskId || !serialized.trim() || !repoPath) return;
 		submitting = true;
-
-		await saveDirective(taskId, repoPath, serialized);
+		submitProgress = 'preparing';
 
 		try {
+			// Composite images/sketches with annotations into flat PNGs
+			const hasRichBlocks = blocks.some(b => b.type === 'image' && (b.meta || b.path === 'sketch'));
+			let finalMarkdown = serialized;
+
+			if (hasRichBlocks) {
+				submitProgress = 'compositing images';
+				finalMarkdown = await compositeAndSerialize(blocks, (cur, total) => {
+					submitProgress = `compositing image ${cur}/${total}`;
+				});
+			}
+
+			// Save the cleaned markdown
+			submitProgress = 'saving';
+			await saveDirective(taskId, repoPath, finalMarkdown);
+
+			// Dispatch to Claude
+			submitProgress = 'dispatching';
 			await submitDirective(taskId);
 			onsubmit?.();
 			onclose();
 		} catch {
 			submitting = false;
+			submitProgress = '';
 		}
 	}
 
 	async function handleDelete() {
 		if (!taskId) return;
-		await dismissClaudeTask(taskId);
+		await dismissTask(taskId);
 		onclose();
 	}
 
@@ -196,7 +214,7 @@
 			{#if submitting}
 				<div class="flex items-center gap-2 text-bourbon-600">
 					<div class="w-3 h-3 border-2 border-bourbon-700 border-t-cmd-500 rounded-full animate-spin"></div>
-					<span class="text-[10px] font-mono">dispatching</span>
+					<span class="text-[10px] font-mono">{submitProgress || 'dispatching'}</span>
 				</div>
 			{:else}
 				<button

@@ -240,14 +240,14 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/claude/tasks", handleListClaudeTasks(database))
 	mux.HandleFunc("/api/claude/tasks/result", handleGetClaudeTaskResult(database))
 	mux.HandleFunc("/api/claude/tasks/update", handleUpdateClaudeTaskResult(database))
-	mux.HandleFunc("/api/claude/tasks/dismiss", handleDismissClaudeTask(database))
+	mux.HandleFunc("/api/claude/tasks/dismiss", handleDismissClaudeTask(database, bus))
 
 	// Refactor
 	mux.HandleFunc("/api/review/refactor", handleStartRefactor(database, bus))
 	mux.HandleFunc("/api/claude/tasks/resolve", handleResolveTask(database, bus))
 
 	// Directives (draft → submit via claude_tasks)
-	mux.HandleFunc("/api/directives/create", handleCreateDirective(database))
+	mux.HandleFunc("/api/directives/create", handleCreateDirective(database, bus))
 	mux.HandleFunc("/api/directives/save", handleSaveDirective(database, bus))
 	mux.HandleFunc("/api/directives/submit", handleSubmitDirective(database))
 

@@ -15,7 +15,6 @@
 		commit,
 		diff,
 		files,
-		loading,
 		onclose,
 		onflag,
 		onsubmitreview,
@@ -25,10 +24,9 @@
 		commit: GitCommit;
 		diff: string | null;
 		files: string[];
-		loading: boolean;
 		onclose: () => void;
 		onflag: () => void;
-		onsubmitreview?: (taskId: number) => void;
+		onsubmitreview?: () => void;
 		onclearreview?: () => void;
 		ondraft?: (repoPath: string, content: string) => void;
 	} = $props();
@@ -238,9 +236,9 @@
 	async function handleSubmitReview() {
 		submitting = true;
 		try {
-			const { id } = await submitReview(commit.repoPath, commit.sha);
+			await submitReview(commit.repoPath, commit.sha);
 			comments = [];
-			onsubmitreview?.(id);
+			onsubmitreview?.();
 		} catch { /* silent */ }
 		submitting = false;
 	}
@@ -345,12 +343,7 @@
 
 		<!-- Body -->
 		<div class="overflow-auto flex-1 select-none" id="diff-body">
-			{#if loading}
-				<div class="flex items-center justify-center gap-2 py-12 text-bourbon-600">
-					<div class="w-4 h-4 border-2 border-bourbon-700 border-t-cmd-500 rounded-full animate-spin"></div>
-					<span class="text-sm">Loading diff...</span>
-				</div>
-			{:else if diff}
+			{#if diff}
 				<div class="text-xs leading-relaxed font-mono bg-bourbon-950 min-w-fit">
 					{#each diffLines as line, idx}
 						{@const commented = isLineCommented(idx)}

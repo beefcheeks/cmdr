@@ -1,8 +1,14 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import { CheckCircle, XCircle, Wrench, GitPullRequestArrow, X, Pencil, Plus } from 'lucide-svelte';
-	import { getClaudeTasks, getClaudeTaskResult, dismissClaudeTask, dismissAllClaudeTasks, type ClaudeTask } from '$lib/api';
-	import { events, connection } from '$lib/events';
+	import { getClaudeTaskResult, type ClaudeTask } from '$lib/api';
+	import {
+		loaded as loadedStore,
+		visibleTasks as visibleTasksStore,
+		activeCount as activeCountStore,
+		dismissableCount as dismissableCountStore,
+		dismiss as dismissTask,
+		clearAllCompleted
+	} from '$lib/taskStore';
 
 	let {
 		onviewresult,
@@ -12,65 +18,11 @@
 		ondraft: (taskId?: number, repoPath?: string) => void;
 	} = $props();
 
-	let tasks = $state<ClaudeTask[]>([]);
-	let loaded = $state(false);
-	let unsub: (() => void) | null = null;
-	let unsubStatus: (() => void) | null = null;
-
-	// Hide tasks that have completed their full lifecycle (refactored + completed)
-	let visibleTasks = $derived(tasks.filter(t => !(t.refactored && t.status === 'completed')));
-	let draftTasks = $derived(visibleTasks.filter(t => t.status === 'draft'));
-	let activeCount = $derived(visibleTasks.filter(t => t.status === 'running' || t.status === 'pending' || t.status === 'refactoring').length);
-	let dismissableCount = $derived(visibleTasks.filter(t => t.status === 'completed' || t.status === 'failed' || t.status === 'resolved' || t.status === 'refactoring').length);
-
-	onMount(async () => {
-		try { tasks = await getClaudeTasks(); } catch { /* silent */ }
-		loaded = true;
-
-		unsub = events.on('claude:task', (evt) => {
-			const idx = tasks.findIndex(t => t.id === evt.id);
-			if (idx >= 0) {
-				tasks[idx] = {
-					...tasks[idx],
-					status: evt.status as ClaudeTask['status'],
-					...(evt.title && { title: evt.title as string }),
-					...(evt.prUrl && { prUrl: evt.prUrl as string }),
-				};
-				tasks = [...tasks];
-			} else if (evt.status === 'pending' || evt.status === 'running') {
-				// Only refetch for new tasks, not updates to already-hidden ones
-				getClaudeTasks().then(t => { tasks = t; }).catch(() => {});
-			}
-		});
-
-		// Refetch on SSE reconnect to catch any missed events
-		unsubStatus = connection.subscribe((c) => {
-			if (c.connected && loaded) {
-				getClaudeTasks().then(t => { tasks = t; }).catch(() => {});
-			}
-		});
-	});
-
-	onDestroy(() => {
-		if (unsub) unsub();
-		if (unsubStatus) unsubStatus();
-	});
-
 	async function viewResult(task: ClaudeTask) {
 		try {
 			const { result } = await getClaudeTaskResult(task.id);
 			onviewresult(task, result);
 		} catch { /* silent */ }
-	}
-
-	async function dismiss(task: ClaudeTask) {
-		await dismissClaudeTask(task.id);
-		tasks = tasks.filter(t => t.id !== task.id);
-	}
-
-	async function clearAll() {
-		await dismissAllClaudeTasks();
-		tasks = tasks.filter(t => t.status === 'running' || t.status === 'pending');
 	}
 
 	function timeAgo(dateStr: string): string {
@@ -93,22 +45,22 @@
 	}
 </script>
 
-{#if loaded}
+{#if $loadedStore}
 	<div class="bg-bourbon-900 rounded-2xl border border-bourbon-800 p-6">
 		<div class="flex items-center gap-4 mb-4">
 			<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">Claude Inbox</h2>
-			{#if activeCount > 0}
+			{#if $activeCountStore > 0}
 				<span class="text-xs font-medium text-run-400 bg-run-700/30 px-2.5 py-0.5 rounded-full animate-pulse">
-					{activeCount} active
+					{$activeCountStore} active
 				</span>
 			{/if}
 		</div>
 
-		{#if visibleTasks.length === 0}
+		{#if $visibleTasksStore.length === 0}
 			<p class="text-sm text-bourbon-600">No new messages.</p>
 		{:else}
 		<div class="flex flex-col gap-1">
-			{#each visibleTasks as task}
+			{#each $visibleTasksStore as task}
 				<button
 					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
 						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'draft' ? 'hover:bg-bourbon-800/50' : ''}"
@@ -165,8 +117,8 @@
 							<span
 								role="button"
 								tabindex="0"
-								onclick={(e) => { e.stopPropagation(); dismiss(task); }}
-								onkeydown={(e) => { if (e.key === 'Enter') dismiss(task); }}
+								onclick={(e) => { e.stopPropagation(); dismissTask(task.id); }}
+								onkeydown={(e) => { if (e.key === 'Enter') dismissTask(task.id); }}
 								class="btn-chiclet-danger !w-6 !h-6"
 								title="Dismiss"
 							>
@@ -178,10 +130,10 @@
 			{/each}
 		</div>
 
-		{#if dismissableCount > 1}
+		{#if $dismissableCountStore > 1}
 			<div class="mt-3 pt-3 border-t border-bourbon-800">
 				<button
-					onclick={clearAll}
+					onclick={clearAllCompleted}
 					class="text-[10px] font-mono text-bourbon-600 hover:text-bourbon-400 transition-colors cursor-pointer"
 				>clear all completed</button>
 			</div>

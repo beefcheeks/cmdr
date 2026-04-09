@@ -3,18 +3,15 @@
 	import {
 		getCommitFiles,
 		getCommitDiff,
-		markCommitsSeen,
-		toggleCommitFlag,
 		pullRepo,
 		type GitCommit,
 		type CommitFile
 	} from '$lib/api';
+	import { commits as commitsStore, markSeen, toggleFlag } from '$lib/commitStore';
 
 	let {
-		commits = $bindable([]),
 		onopendiff
 	}: {
-		commits: GitCommit[];
 		onopendiff: (commit: GitCommit, diff: string, files: string[]) => void;
 	} = $props();
 
@@ -23,10 +20,10 @@
 	let filesLoading: string | null = $state(null);
 	let showSeen = $state(false);
 
-	let unseenCount = $derived(commits.filter(c => !c.seen).length);
-	let inReviewCount = $derived(commits.filter(c => c.reviewCount > 0).length);
-	let flaggedCount = $derived(commits.filter(c => c.flagged && c.reviewCount === 0).length);
-	let seenCount = $derived(commits.filter(c => c.seen && !c.flagged && c.reviewCount === 0).length);
+	let unseenCount = $derived($commitsStore.filter(c => !c.seen).length);
+	let inReviewCount = $derived($commitsStore.filter(c => c.reviewCount > 0).length);
+	let flaggedCount = $derived($commitsStore.filter(c => c.flagged && c.reviewCount === 0).length);
+	let seenCount = $derived($commitsStore.filter(c => c.seen && !c.flagged && c.reviewCount === 0).length);
 
 	function groupByRepo(list: GitCommit[]): { name: string; path: string; commits: GitCommit[] }[] {
 		const groups: { name: string; path: string; commits: GitCommit[] }[] = [];
@@ -43,10 +40,10 @@
 		return groups;
 	}
 
-	let unseenByRepo = $derived(groupByRepo(commits.filter(c => !c.seen)));
-	let inReviewByRepo = $derived(groupByRepo(commits.filter(c => c.reviewCount > 0)));
-	let flaggedByRepo = $derived(groupByRepo(commits.filter(c => c.flagged && c.reviewCount === 0)));
-	let seenByRepo = $derived(groupByRepo(commits.filter(c => c.seen && !c.flagged && c.reviewCount === 0)));
+	let unseenByRepo = $derived(groupByRepo($commitsStore.filter(c => !c.seen)));
+	let inReviewByRepo = $derived(groupByRepo($commitsStore.filter(c => c.reviewCount > 0)));
+	let flaggedByRepo = $derived(groupByRepo($commitsStore.filter(c => c.flagged && c.reviewCount === 0)));
+	let seenByRepo = $derived(groupByRepo($commitsStore.filter(c => c.seen && !c.flagged && c.reviewCount === 0)));
 
 	let pullingRepo: string | null = $state(null);
 
@@ -78,10 +75,8 @@
 	}
 
 	async function openDiffModal(commit: GitCommit) {
-		// Mark as seen when reviewing
 		if (!commit.seen) {
-			markCommitsSeen([commit.id]);
-			commits = commits.map(c => c.id === commit.id ? { ...c, seen: true } : c);
+			markSeen([commit.id]);
 		}
 
 		try {
@@ -93,16 +88,13 @@
 	}
 
 	async function markRepoSeen(repoPath: string) {
-		const unseenIds = commits.filter(c => c.repoPath === repoPath && !c.seen).map(c => c.id);
+		const unseenIds = $commitsStore.filter(c => c.repoPath === repoPath && !c.seen).map(c => c.id);
 		if (unseenIds.length === 0) return;
-		await markCommitsSeen(unseenIds);
-		commits = commits.map(c => unseenIds.includes(c.id) ? { ...c, seen: true } : c);
+		await markSeen(unseenIds);
 	}
 
 	function handleToggleFlag(commit: GitCommit) {
-		const newState = !commit.flagged;
-		toggleCommitFlag(commit.id, newState);
-		commits = commits.map(c => c.id === commit.id ? { ...c, flagged: newState } : c);
+		toggleFlag(commit.id);
 	}
 
 	function timeAgo(dateStr: string): string {
@@ -231,7 +223,7 @@
 		{/if}
 	</div>
 
-	{#if commits.length === 0}
+	{#if $commitsStore.length === 0}
 		<p class="text-bourbon-600 text-sm">No commits yet. Add repos in <a href="/settings" class="text-cmd-400 hover:text-cmd-300">settings</a>.</p>
 	{:else}
 		<!-- Unseen commits -->

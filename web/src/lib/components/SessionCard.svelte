@@ -2,23 +2,18 @@
 	import { ArrowRightLeft, Sparkles, X, Focus } from 'lucide-svelte';
 	import ActivityChart from './ActivityChart.svelte';
 	import {
-		killTmuxSession,
 		focusTmuxSession,
 		switchTmuxSession,
 		openFolder,
-		type TmuxSession,
 		type ClaudeSession
 	} from '$lib/api';
-
-	let {
-		sessions = $bindable([]),
-		claudeSessions,
-		sessionsLoaded
-	}: {
-		sessions: TmuxSession[];
-		claudeSessions: ClaudeSession[];
-		sessionsLoaded: boolean;
-	} = $props();
+	import {
+		sessions as sessionsStore,
+		claudeSessions as claudeSessionsStore,
+		sessionsLoaded as sessionsLoadedStore,
+		killSession,
+		markAttached
+	} from '$lib/sessionStore';
 
 	// --- Session kill ---
 	let holdingKill: string | null = $state(null);
@@ -54,11 +49,8 @@
 		holdingKill = null;
 		holdProgress = 0;
 		killedSession = name;
-		await killTmuxSession(name);
-		setTimeout(() => {
-			sessions = sessions.filter((s) => s.name !== name);
-			killedSession = null;
-		}, 3000);
+		await killSession(name);
+		setTimeout(() => { killedSession = null; }, 3000);
 	}
 
 	function shortenPath(path: string): string {
@@ -71,14 +63,14 @@
 
 	// Map Claude sessions by their tmux pane target
 	let claudeByTarget = $derived(
-		new Map(claudeSessions.filter((c) => c.tmuxTarget).map((c) => [c.tmuxTarget, c]))
+		new Map($claudeSessionsStore.filter((c) => c.tmuxTarget).map((c) => [c.tmuxTarget, c]))
 	);
 
 	// Best Claude status per tmux session (for session-level badge)
 	const statusRank: Record<string, number> = { working: 3, waiting: 2, idle: 1, unknown: 0 };
 	let claudeBySession = $derived(() => {
 		const map = new Map<string, ClaudeSession>();
-		for (const c of claudeSessions) {
+		for (const c of $claudeSessionsStore) {
 			if (!c.tmuxTarget) continue;
 			const sessName = c.tmuxTarget.split(':')[0];
 			const existing = map.get(sessName);
@@ -90,7 +82,7 @@
 	});
 
 	let unmatchedClaude = $derived(
-		claudeSessions.filter((c) => !c.tmuxTarget)
+		$claudeSessionsStore.filter((c) => !c.tmuxTarget)
 	);
 </script>
 
@@ -102,16 +94,16 @@
 		<ActivityChart />
 	</div>
 
-	{#if !sessionsLoaded}
+	{#if !$sessionsLoadedStore}
 		<div class="flex items-center gap-2 text-bourbon-600 py-4">
 			<div class="w-3 h-3 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
 			<span class="text-[10px] font-mono">loading sessions</span>
 		</div>
-	{:else if sessions.length === 0}
+	{:else if $sessionsStore.length === 0}
 		<p class="text-bourbon-600 text-sm">No tmux sessions running.</p>
 	{:else}
 		<div class="flex flex-col gap-1.5">
-			{#each sessions as session}
+			{#each $sessionsStore as session}
 				{@const claude = claudeBySession().get(session.name)}
 				{#if killedSession === session.name}
 					<div class="flex items-center justify-center border border-red-900/30 rounded-lg px-5 py-3.5 text-red-400
@@ -194,7 +186,7 @@
 							<button
 								onclick={() => {
 									switchTmuxSession(session.name);
-									sessions = sessions.map(s => ({ ...s, attached: s.name === session.name }));
+									markAttached(session.name);
 								}}
 								class="btn-chiclet"
 							>

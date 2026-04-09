@@ -418,7 +418,7 @@ func handleGetClaudeTaskResult(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func handleDismissClaudeTask(db *sql.DB) http.HandlerFunc {
+func handleDismissClaudeTask(db *sql.DB, bus *EventBus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -457,6 +457,17 @@ func handleDismissClaudeTask(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		n, _ := res.RowsAffected()
+
+		if body.ID > 0 && n > 0 {
+			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+				"id": body.ID, "status": "dismissed",
+			}})
+		} else if body.All == "completed" && n > 0 {
+			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+				"id": 0, "status": "dismissed",
+			}})
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]int64{"dismissed": n})
 	}

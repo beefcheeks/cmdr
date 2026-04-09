@@ -7,8 +7,16 @@
 	import type { DaemonStatus } from '$lib/api';
 	import { onMount } from 'svelte';
 	import { playSound, preload, SFX } from '$lib/sounds';
+	import { initTaskStore } from '$lib/taskStore';
+	import { initSessionStore } from '$lib/sessionStore';
+	import { initCommitStore } from '$lib/commitStore';
 
-	onMount(() => preload(SFX.hover, SFX.click, SFX.newCommits));
+	onMount(() => {
+		preload(SFX.hover, SFX.click, SFX.newCommits);
+		initTaskStore();
+		initSessionStore();
+		initCommitStore();
+	});
 
 	let { children } = $props();
 	let status: DaemonStatus | null = $state(null);

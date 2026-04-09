@@ -14,7 +14,7 @@ import (
 )
 
 // handleCreateDirective creates a new claude_task in draft status.
-func handleCreateDirective(db *sql.DB) http.HandlerFunc {
+func handleCreateDirective(db *sql.DB, bus *EventBus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -39,6 +39,10 @@ func handleCreateDirective(db *sql.DB) http.HandlerFunc {
 		}
 
 		id, _ := result.LastInsertId()
+
+		bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+			"id": int(id), "status": "draft", "title": directiveTitle(body.Content),
+		}})
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"id": int(id), "status": "draft"})
@@ -65,16 +69,18 @@ func handleSaveDirective(db *sql.DB, bus *EventBus) http.HandlerFunc {
 
 		title := directiveTitle(body.Content)
 
-		// Check if title changed before publishing SSE
-		var oldTitle string
-		db.QueryRow(`SELECT COALESCE(title, '') FROM claude_tasks WHERE id=?`, body.ID).Scan(&oldTitle)
+		// Read old values to diff against
+		var oldTitle, oldRepo string
+		db.QueryRow(`SELECT COALESCE(title, ''), COALESCE(repo_path, '') FROM claude_tasks WHERE id=?`, body.ID).
+			Scan(&oldTitle, &oldRepo)
 
 		db.Exec(`UPDATE claude_tasks SET repo_path=?, prompt=?, title=? WHERE id=? AND status='draft'`,
 			body.RepoPath, body.Content, title, body.ID)
 
-		if title != oldTitle {
+		// Only publish when something the inbox displays actually changed
+		if title != oldTitle || body.RepoPath != oldRepo {
 			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
-				"id": body.ID, "status": "draft", "title": title,
+				"id": body.ID, "status": "draft", "title": title, "repoPath": body.RepoPath,
 			}})
 		}
 
