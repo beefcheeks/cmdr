@@ -32,6 +32,31 @@ export interface ImageBlock {
 
 export type Block = TextBlock | CodeRefBlock | ImageBlock;
 
+// --- Stroke serialization ---
+// Stored in ImageBlock.meta as: "strokes:<base64 JSON>"
+// The JSON is an array of { points: number[][], color: string, size: number }
+
+export interface StrokeData {
+	points: number[][];
+	color: string;
+	size: number;
+}
+
+export function parseStrokes(meta: string): StrokeData[] {
+	if (!meta || !meta.startsWith('strokes:')) return [];
+	try {
+		const json = atob(meta.slice('strokes:'.length));
+		return JSON.parse(json);
+	} catch {
+		return [];
+	}
+}
+
+export function serializeStrokes(strokes: StrokeData[]): string {
+	if (strokes.length === 0) return '';
+	return 'strokes:' + btoa(JSON.stringify(strokes));
+}
+
 function uid(): string {
 	return crypto.randomUUID();
 }
