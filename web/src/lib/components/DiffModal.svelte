@@ -40,7 +40,6 @@
 	let submitting = $state(false);
 	let dragging = $state(false);
 	let pulling = $state(false);
-	let pullResult: { status: string; message: string } | null = $state(null);
 
 	// Commit-level note (lineStart=0, lineEnd=0)
 	let commitNote = $state('');
@@ -48,16 +47,22 @@
 	let commitNoteOpen = $state(false);
 	let savingNote = $state(false);
 
+	let pullError: string | null = $state(null);
+
 	async function handlePull() {
 		pulling = true;
-		pullResult = null;
+		pullError = null;
 		try {
-			pullResult = await pullRepo(commit.repoPath);
-			if (pullResult.status === 'ok') {
+			const res = await pullRepo(commit.repoPath);
+			if (res.status === 'ok') {
 				commit.local = true;
+			} else {
+				pullError = res.message;
+				setTimeout(() => { pullError = null; }, 6000);
 			}
 		} catch {
-			pullResult = { status: 'error', message: 'Failed to pull' };
+			pullError = 'Failed to pull';
+			setTimeout(() => { pullError = null; }, 6000);
 		}
 		pulling = false;
 	}
@@ -339,9 +344,6 @@
 						{pulling ? 'syncing' : 'sync'}
 					</button>
 				{/if}
-				{#if pullResult && pullResult.status !== 'ok'}
-					<span class="text-[9px] font-mono text-red-400">{pullResult.message}</span>
-				{/if}
 				<span class="text-bourbon-200 truncate">{firstLine(commit.message)}</span>
 			</div>
 			<div class="flex items-center gap-3 shrink-0">
@@ -590,4 +592,20 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- Pull error toast -->
+	{#if pullError}
+		<div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] max-w-lg bg-bourbon-900 border border-red-500/40 rounded-xl px-5 py-3 shadow-lg shadow-red-500/10">
+			<div class="flex items-start gap-3">
+				<span class="text-red-400 shrink-0 mt-0.5"><X size={14} /></span>
+				<div class="flex flex-col gap-1 min-w-0">
+					<span class="text-xs font-display font-bold uppercase tracking-widest text-red-400">Sync failed</span>
+					<span class="text-xs font-mono text-bourbon-300 break-words">{pullError}</span>
+				</div>
+				<button onclick={() => { pullError = null; }} class="text-bourbon-600 hover:text-bourbon-300 shrink-0 cursor-pointer">
+					<X size={14} />
+				</button>
+			</div>
+		</div>
+	{/if}
 </div>
