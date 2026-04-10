@@ -327,7 +327,7 @@ func stripHTML(s string) string {
 
 func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		query := `SELECT id, type, status, repo_path, commit_sha, COALESCE(title, ''), COALESCE(pr_url, ''), error_msg, created_at, started_at, completed_at, COALESCE(refactored, 0)
+		query := `SELECT id, type, status, repo_path, commit_sha, COALESCE(title, ''), COALESCE(pr_url, ''), error_msg, created_at, started_at, completed_at, COALESCE(refactored, 0), COALESCE(prompt, ''), COALESCE(intent, '')
 			FROM claude_tasks ORDER BY created_at DESC LIMIT 50`
 		rows, err := db.Query(query)
 		if err != nil {
@@ -349,14 +349,28 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 			StartedAt   *string `json:"startedAt"`
 			CompletedAt *string `json:"completedAt"`
 			Refactored  bool    `json:"refactored"`
+			prompt      string
+			intent      string
 		}
 
 		var taskList []task
 		for rows.Next() {
 			var t task
 			if err := rows.Scan(&t.ID, &t.Type, &t.Status, &t.RepoPath, &t.CommitSHA, &t.Title, &t.PRUrl,
-				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.Refactored); err != nil {
+				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.Refactored, &t.prompt, &t.intent); err != nil {
 				continue
+			}
+			// Derive title if not set
+			if t.Title == "" && t.prompt != "" {
+				t.Title = directiveTitle(t.prompt)
+				if t.intent != "" {
+					for _, intent := range prompts.ListIntents() {
+						if intent.ID == t.intent {
+							t.Title = strings.ToLower(intent.Name) + ": " + t.Title
+							break
+						}
+					}
+				}
 			}
 			taskList = append(taskList, t)
 		}
@@ -401,9 +415,9 @@ func handleGetClaudeTaskResult(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var result, prompt, status, errMsg string
-		err := db.QueryRow(`SELECT result, prompt, status, error_msg FROM claude_tasks WHERE id = ?`, id).
-			Scan(&result, &prompt, &status, &errMsg)
+		var result, prompt, status, errMsg, intent string
+		err := db.QueryRow(`SELECT result, prompt, status, error_msg, COALESCE(intent, '') FROM claude_tasks WHERE id = ?`, id).
+			Scan(&result, &prompt, &status, &errMsg, &intent)
 		if err != nil {
 			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
 			return
@@ -420,6 +434,7 @@ func handleGetClaudeTaskResult(db *sql.DB) http.HandlerFunc {
 			"result":   content,
 			"status":   status,
 			"errorMsg": errMsg,
+			"intent":   intent,
 		})
 	}
 }

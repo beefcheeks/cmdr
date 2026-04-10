@@ -5,9 +5,11 @@
 	import {
 		getRepos,
 		getClaudeTaskResult,
+		getDirectiveIntents,
 		saveDirective,
 		submitDirective,
-		type MonitoredRepo
+		type MonitoredRepo,
+		type DirectiveIntent
 	} from '$lib/api';
 	import { create as createTask, dismiss as dismissTask } from '$lib/taskStore';
 	import {
@@ -29,6 +31,8 @@
 	} = $props();
 
 	let repos = $state<MonitoredRepo[]>([]);
+	let intents = $state<DirectiveIntent[]>([]);
+	let selectedIntent = $state('');
 	let taskId = $state<number | null>(null);
 	let blocks = $state<Block[]>([]);
 	let repoPath = $state('');
@@ -41,7 +45,7 @@
 	let editorRef: { focusLast: () => void } | undefined = $state(undefined);
 
 	onMount(async () => {
-		repos = await getRepos();
+		[repos, intents] = await Promise.all([getRepos(), getDirectiveIntents()]);
 
 		let content = initial?.content ?? '';
 		repoPath = initial?.repoPath ?? '';
@@ -53,8 +57,9 @@
 		if (initial?.taskId) {
 			taskId = initial.taskId;
 			try {
-				const { result } = await getClaudeTaskResult(taskId);
-				content = result || '';
+				const data = await getClaudeTaskResult(taskId);
+				content = data.result || '';
+				if (data.intent) selectedIntent = data.intent;
 			} catch { /* use initial content */ }
 		} else {
 			const res = await createTask(repoPath, content);
@@ -70,16 +75,20 @@
 	// Serialize + auto-save when blocks or repo change
 	let serialized = $derived(serializeBlocks(blocks));
 
+	let lastSavedIntent = '';
+
 	$effect(() => {
 		const s = serialized;
 		const r = repoPath;
+		const i = selectedIntent;
 
 		const timer = setTimeout(async () => {
-			if (!taskId || !loaded || (s === lastSavedContent && r === lastSavedRepo)) return;
+			if (!taskId || !loaded || (s === lastSavedContent && r === lastSavedRepo && i === lastSavedIntent)) return;
 			saving = true;
-			await saveDirective(taskId, r, s);
+			await saveDirective(taskId, r, s, i || undefined);
 			lastSavedContent = s;
 			lastSavedRepo = r;
+			lastSavedIntent = i;
 			saving = false;
 		}, 1500);
 
@@ -88,8 +97,8 @@
 
 	onDestroy(() => {
 		const s = serializeBlocks(blocks);
-		if (taskId && (s !== lastSavedContent || repoPath !== lastSavedRepo)) {
-			saveDirective(taskId, repoPath, s);
+		if (taskId && (s !== lastSavedContent || repoPath !== lastSavedRepo || selectedIntent !== lastSavedIntent)) {
+			saveDirective(taskId, repoPath, s, selectedIntent || undefined);
 		}
 	});
 
@@ -116,7 +125,7 @@
 
 			// Dispatch to Claude
 			submitProgress = 'dispatching';
-			await submitDirective(taskId);
+			await submitDirective(taskId, selectedIntent || undefined);
 			onsubmit?.();
 			onclose();
 		} catch {
@@ -174,9 +183,8 @@
 		</div>
 
 		<!-- Repo selector -->
-		<div class="px-6 py-3 border-b border-bourbon-800/50 shrink-0">
-			<label class="flex items-center gap-3">
-				<span class="text-[10px] font-display font-bold uppercase tracking-widest text-bourbon-500">Target</span>
+		<div class="px-6 py-3 border-b border-bourbon-800/50 shrink-0 flex items-center gap-3">
+			<span class="text-[10px] font-display font-bold uppercase tracking-widest text-bourbon-500 w-16 shrink-0">Target</span>
 				<select
 					bind:value={repoPath}
 					class="flex-1 bg-bourbon-950 border border-bourbon-800 rounded-lg px-3 py-1.5 text-xs font-mono text-bourbon-200 focus:outline-none focus:border-cmd-500/50"
@@ -185,8 +193,27 @@
 						<option value={repo.path}>{repo.name}</option>
 					{/each}
 				</select>
-			</label>
 		</div>
+
+		<!-- Intent selector -->
+		{#if intents.length > 0}
+			<div class="px-6 py-2 border-b border-bourbon-800/50 shrink-0 flex items-center gap-3">
+				<span class="text-[10px] font-display font-bold uppercase tracking-widest text-bourbon-500 w-16 shrink-0">Intent</span>
+				<div class="flex flex-wrap gap-1.5">
+					{#each intents as intent}
+						<button
+							onclick={() => { selectedIntent = selectedIntent === intent.id ? '' : intent.id; }}
+							class="px-2.5 py-1 rounded-full text-[10px] font-mono transition-colors cursor-pointer
+								{selectedIntent === intent.id
+									? 'bg-cmd-500/20 text-cmd-400 border border-cmd-500/40'
+									: 'text-bourbon-600 border border-bourbon-800 hover:text-bourbon-400 hover:border-bourbon-700'}"
+						>
+							{intent.name}
+						</button>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<!-- Block editor -->

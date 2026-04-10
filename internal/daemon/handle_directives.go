@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mikehu/cmdr/internal/prompts"
 	"github.com/mikehu/cmdr/internal/tmux"
 )
 
@@ -61,26 +62,23 @@ func handleSaveDirective(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			ID       int    `json:"id"`
 			RepoPath string `json:"repoPath"`
 			Content  string `json:"content"`
+			Intent   string `json:"intent"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == 0 {
 			http.Error(w, `{"error":"id is required"}`, http.StatusBadRequest)
 			return
 		}
 
-		title := directiveTitle(body.Content)
-
 		// Read old values to diff against
-		var oldTitle, oldRepo string
-		db.QueryRow(`SELECT COALESCE(title, ''), COALESCE(repo_path, '') FROM claude_tasks WHERE id=?`, body.ID).
-			Scan(&oldTitle, &oldRepo)
+		var oldRepo string
+		db.QueryRow(`SELECT COALESCE(repo_path, '') FROM claude_tasks WHERE id=?`, body.ID).Scan(&oldRepo)
 
-		db.Exec(`UPDATE claude_tasks SET repo_path=?, prompt=?, title=? WHERE id=? AND status='draft'`,
-			body.RepoPath, body.Content, title, body.ID)
+		db.Exec(`UPDATE claude_tasks SET repo_path=?, prompt=?, intent=? WHERE id=? AND status='draft'`,
+			body.RepoPath, body.Content, body.Intent, body.ID)
 
-		// Only publish when something the inbox displays actually changed
-		if title != oldTitle || body.RepoPath != oldRepo {
+		if body.RepoPath != oldRepo {
 			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
-				"id": body.ID, "status": "draft", "title": title, "repoPath": body.RepoPath,
+				"id": body.ID, "status": "draft", "repoPath": body.RepoPath,
 			}})
 		}
 
@@ -98,7 +96,8 @@ func handleSubmitDirective(db *sql.DB) http.HandlerFunc {
 		}
 
 		var body struct {
-			ID int `json:"id"`
+			ID     int    `json:"id"`
+			Intent string `json:"intent"` // optional intent ID (e.g. "bug-fix")
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == 0 {
 			http.Error(w, `{"error":"id is required"}`, http.StatusBadRequest)
@@ -129,7 +128,20 @@ func handleSubmitDirective(db *sql.DB) http.HandlerFunc {
 		// Launch claude in a new window
 		escaped := strings.ReplaceAll(prompt, "'", "'\\''")
 		windowName := fmt.Sprintf("task-%d", body.ID)
-		cmd := fmt.Sprintf("claude --name 'cmdr-task-%d' '%s'", body.ID, escaped)
+
+		// Build command with optional intent system prompt
+		var cmd string
+		if body.Intent != "" {
+			intentPrompt, err := prompts.GetIntentPrompt(body.Intent)
+			if err == nil {
+				escapedIntent := strings.ReplaceAll(intentPrompt, "'", "'\\''")
+				cmd = fmt.Sprintf("claude --name 'cmdr-task-%d' --append-system-prompt '%s' '%s'", body.ID, escapedIntent, escaped)
+			} else {
+				cmd = fmt.Sprintf("claude --name 'cmdr-task-%d' '%s'", body.ID, escaped)
+			}
+		} else {
+			cmd = fmt.Sprintf("claude --name 'cmdr-task-%d' '%s'", body.ID, escaped)
+		}
 
 		target, err := tmux.CreateDraftWindow(sessionName, windowName, repoPath, cmd)
 		if err != nil {
@@ -138,9 +150,22 @@ func handleSubmitDirective(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Update task status
+		// Update task status and prefix title with intent
 		now := time.Now().Format(time.RFC3339)
-		db.Exec(`UPDATE claude_tasks SET status='running', started_at=? WHERE id=?`, now, body.ID)
+		if body.Intent != "" {
+			// Find the intent name for the title prefix
+			for _, intent := range prompts.ListIntents() {
+				if intent.ID == body.Intent {
+					var currentTitle string
+					db.QueryRow(`SELECT COALESCE(title, '') FROM claude_tasks WHERE id=?`, body.ID).Scan(&currentTitle)
+					prefixed := strings.ToLower(intent.Name) + ": " + currentTitle
+					db.Exec(`UPDATE claude_tasks SET status='running', started_at=?, title=? WHERE id=?`, now, prefixed, body.ID)
+					break
+				}
+			}
+		} else {
+			db.Exec(`UPDATE claude_tasks SET status='running', started_at=? WHERE id=?`, now, body.ID)
+		}
 
 		log.Printf("cmdr: directive submitted (task %d, session %s, target %s)", body.ID, sessionName, target)
 
@@ -174,20 +199,25 @@ func findOrCreateSession(repoPath string) (string, error) {
 	return tmux.CreateSession(repoPath)
 }
 
+// handleListIntents returns available directive intent presets.
+func handleListIntents() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(prompts.ListIntents())
+	}
+}
+
 func resolveSymlinks(path string) (string, error) {
 	return filepath.EvalSymlinks(path)
 }
 
 // directiveTitle extracts a title from directive markdown content.
-// Takes the first non-empty, non-special line, truncated to 80 chars.
+// Takes the first non-empty line, truncated to 80 chars.
+// Code refs (@file) are used as-is. Image blocks are skipped.
 func directiveTitle(content string) string {
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		// Skip code refs and image blocks
-		if strings.HasPrefix(line, "@") || strings.HasPrefix(line, "![") {
+		if line == "" || strings.HasPrefix(line, "![") {
 			continue
 		}
 		// Strip markdown heading prefix

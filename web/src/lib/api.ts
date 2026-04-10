@@ -338,6 +338,7 @@ export interface ClaudeTaskResult {
 	result: string;
 	status: string;
 	errorMsg: string;
+	intent?: string;
 }
 
 export function getClaudeTasks(): Promise<ClaudeTask[]> {
@@ -406,20 +407,29 @@ export function createDirective(repoPath: string, content: string = ''): Promise
 	});
 }
 
-export function saveDirective(id: number, repoPath: string, content: string): Promise<{ status: string }> {
+export function saveDirective(id: number, repoPath: string, content: string, intent?: string): Promise<{ status: string }> {
 	return request('/directives/save', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ id, repoPath, content })
+		body: JSON.stringify({ id, repoPath, content, intent })
 	});
 }
 
-export function submitDirective(id: number): Promise<{ status: string; target: string; session: string }> {
+export function submitDirective(id: number, intent?: string): Promise<{ status: string; target: string; session: string }> {
 	return request('/directives/submit', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ id })
+		body: JSON.stringify({ id, intent })
 	});
+}
+
+export interface DirectiveIntent {
+	id: string;
+	name: string;
+}
+
+export function getDirectiveIntents(): Promise<DirectiveIntent[]> {
+	return request('/directives/intents');
 }
 
 // --- Code + Images ---

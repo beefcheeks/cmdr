@@ -76,17 +76,22 @@
 		const before = content.slice(0, atIdx).trimEnd();
 		const after = content.slice(atIdx + atPattern.length).trimStart();
 
-		// Update the text block with content before @
-		updateBlock(acBlockIdx, { content: before });
-
-		// Insert code ref block after the text block
 		const codeRef = createCodeRefBlock(file);
-		blocks.splice(acBlockIdx + 1, 0, codeRef);
 
-		// If there's text after, add another text block
-		if (after) {
-			const afterBlock = createTextBlock(after);
-			blocks.splice(acBlockIdx + 2, 0, afterBlock);
+		if (!before && !after) {
+			// Text block only had the @query — replace it entirely
+			blocks[acBlockIdx] = codeRef;
+		} else {
+			// Update the text block with content before @
+			updateBlock(acBlockIdx, { content: before });
+
+			// Insert code ref block after
+			blocks.splice(acBlockIdx + 1, 0, codeRef);
+
+			// If there's text after, add another text block
+			if (after) {
+				blocks.splice(acBlockIdx + 2, 0, createTextBlock(after));
+			}
 		}
 
 		blocks = ensureTrailingTextBlock([...blocks]);

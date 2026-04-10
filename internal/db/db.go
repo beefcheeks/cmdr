@@ -148,6 +148,16 @@ func migrate(d *sql.DB) error {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN refactored INTEGER NOT NULL DEFAULT 0`)
 	}
 
+	// Add intent column to claude_tasks if missing
+	var hasIntent bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='intent'`).Scan(&hasIntent)
+	if !hasIntent {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN intent TEXT NOT NULL DEFAULT ''`)
+	}
+
+	// Clear stale titles on draft directives (now derived on read)
+	d.Exec(`UPDATE claude_tasks SET title='' WHERE type='directive' AND status='draft'`)
+
 	// Clean up unused drafts table if it exists
 	d.Exec(`DROP TABLE IF EXISTS drafts`)
 
