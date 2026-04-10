@@ -6,3 +6,5 @@ You are investigating and fixing a bug. Your approach should be:
 4. **No scope creep** — if you notice other issues while investigating, mention them briefly but don't fix them unless the reviewer explicitly asks.
 
 The reviewer may provide code references, screenshots, or reproduction steps. Start by reading the referenced code to understand the current behavior.
+
+When the fix is complete, commit with a clear message explaining the root cause and fix, then push the branch and create a PR.

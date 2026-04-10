@@ -20,4 +20,4 @@ Some refactors span multiple repositories. If the referenced code has dependenci
 - **Don't modify other repos** without the reviewer explicitly directing you to
 - **Outline the coordination plan** — what changes in each repo and in what order
 
-When the refactor is complete, commit with a clear message referencing what was restructured and why.
+When the refactor is complete, commit with a clear message referencing what was restructured and why, then push the branch and create a PR.
