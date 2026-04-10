@@ -331,7 +331,6 @@ export interface ClaudeTask {
 	createdAt: string;
 	startedAt: string | null;
 	completedAt: string | null;
-	refactored: boolean;
 }
 
 export interface ClaudeTaskResult {

@@ -327,7 +327,7 @@ func stripHTML(s string) string {
 
 func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		query := `SELECT id, type, status, repo_path, commit_sha, COALESCE(title, ''), COALESCE(pr_url, ''), error_msg, created_at, started_at, completed_at, COALESCE(refactored, 0), COALESCE(prompt, ''), COALESCE(intent, '')
+		query := `SELECT id, type, status, repo_path, commit_sha, COALESCE(title, ''), COALESCE(pr_url, ''), error_msg, created_at, started_at, completed_at, COALESCE(prompt, ''), COALESCE(intent, '')
 			FROM claude_tasks ORDER BY created_at DESC LIMIT 50`
 		rows, err := db.Query(query)
 		if err != nil {
@@ -348,16 +348,15 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 			CreatedAt   string  `json:"createdAt"`
 			StartedAt   *string `json:"startedAt"`
 			CompletedAt *string `json:"completedAt"`
-			Refactored  bool    `json:"refactored"`
-			prompt      string
-			intent      string
+			prompt string
+			intent string
 		}
 
 		var taskList []task
 		for rows.Next() {
 			var t task
 			if err := rows.Scan(&t.ID, &t.Type, &t.Status, &t.RepoPath, &t.CommitSHA, &t.Title, &t.PRUrl,
-				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.Refactored, &t.prompt, &t.intent); err != nil {
+				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.prompt, &t.intent); err != nil {
 				continue
 			}
 			// Derive title if not set
@@ -590,7 +589,7 @@ func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		}
 
 		// Update task status
-		db.Exec(`UPDATE claude_tasks SET status='refactoring', refactored=1 WHERE id=?`, body.TaskID)
+		db.Exec(`UPDATE claude_tasks SET status='refactoring' WHERE id=?`, body.TaskID)
 		bus.Publish(Event{Type: "claude:task", Data: map[string]any{
 			"id": body.TaskID, "status": "refactoring",
 		}})

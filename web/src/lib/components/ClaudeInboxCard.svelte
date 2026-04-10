@@ -85,8 +85,6 @@
 							<span class="text-cmd-400 animate-pulse"><Wrench size={15} /></span>
 						{:else if task.status === 'resolved'}
 							<span class="text-green-400"><GitPullRequestArrow size={15} /></span>
-						{:else if task.status === 'completed' && task.refactored}
-							<span class="text-green-400"><Wrench size={15} /></span>
 						{:else if task.status === 'completed'}
 							<span class="text-green-400"><CheckCircle size={15} /></span>
 						{:else}

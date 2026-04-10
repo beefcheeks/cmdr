@@ -16,7 +16,7 @@ export const loaded = writable(false);
 // --- Derived views ---
 
 export const visibleTasks = derived(tasks, (t) =>
-	t.filter((task) => !(task.refactored && task.status === 'completed'))
+	t.filter((task) => task.status !== 'completed')
 );
 export const activeCount = derived(visibleTasks, (t) =>
 	t.filter((task) => task.status === 'running' || task.status === 'pending' || task.status === 'refactoring').length
