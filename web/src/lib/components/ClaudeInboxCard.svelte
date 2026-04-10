@@ -142,7 +142,7 @@
 				<button
 					onclick={clearAllCompleted}
 					class="ml-auto text-[10px] font-mono text-bourbon-600 hover:text-bourbon-400 transition-colors cursor-pointer"
-				>clear all</button>
+				>clear completed</button>
 			{/if}
 		</div>
 	</div>
