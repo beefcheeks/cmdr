@@ -322,7 +322,7 @@ export function submitReview(repoPath: string, sha: string): Promise<{ id: numbe
 export interface ClaudeTask {
 	id: number;
 	type: string;
-	status: 'draft' | 'pending' | 'running' | 'completed' | 'failed' | 'refactoring' | 'resolved';
+	status: 'draft' | 'pending' | 'running' | 'completed' | 'failed' | 'refactoring' | 'implementing' | 'resolved';
 	repoPath: string;
 	commitSha: string;
 	title?: string;

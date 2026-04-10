@@ -63,17 +63,17 @@
 			{#each $visibleTasksStore as task}
 				<button
 					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
-						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'draft' ? 'hover:bg-bourbon-800/50' : ''}"
+						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'implementing' || task.status === 'draft' ? 'hover:bg-bourbon-800/50' : ''}"
 					onclick={() => {
 						if (task.status === 'draft') {
 							ondraft(task.id, task.repoPath);
 						} else if (task.status === 'resolved' && task.prUrl) {
 							window.open(task.prUrl, '_blank');
-						} else if (task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring') {
+						} else if (task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'implementing') {
 							viewResult(task);
 						}
 					}}
-					disabled={task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring' && task.status !== 'draft'}
+					disabled={task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring' && task.status !== 'implementing' && task.status !== 'draft'}
 				>
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">
@@ -81,7 +81,7 @@
 							<span class="text-cmd-400"><Pencil size={15} /></span>
 						{:else if task.status === 'running' || task.status === 'pending'}
 							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
-						{:else if task.status === 'refactoring'}
+						{:else if task.status === 'refactoring' || task.status === 'implementing'}
 							<span class="text-cmd-400 animate-pulse"><Wrench size={15} /></span>
 						{:else if task.status === 'resolved'}
 							<span class="text-green-400"><GitPullRequestArrow size={15} /></span>

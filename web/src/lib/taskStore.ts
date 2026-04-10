@@ -19,10 +19,10 @@ export const visibleTasks = derived(tasks, (t) =>
 	t.filter((task) => task.status !== 'completed')
 );
 export const activeCount = derived(visibleTasks, (t) =>
-	t.filter((task) => task.status === 'running' || task.status === 'pending' || task.status === 'refactoring').length
+	t.filter((task) => task.status === 'running' || task.status === 'pending' || task.status === 'refactoring' || task.status === 'implementing').length
 );
 export const dismissableCount = derived(visibleTasks, (t) =>
-	t.filter((task) => task.status === 'completed' || task.status === 'failed' || task.status === 'resolved' || task.status === 'refactoring').length
+	t.filter((task) => task.status === 'completed' || task.status === 'failed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'implementing').length
 );
 
 // --- Actions ---

@@ -1,24 +1,10 @@
-You are implementing a new feature or improvement. Before writing any code, you must produce a design document.
+You are implementing an approved feature design. An Architecture Decision Record (ADR) has been provided — it contains the agreed-upon approach and a step-by-step implementation plan.
 
-## Phase 1: Design (ADR)
+## Instructions
 
-Start by creating an Architecture Decision Record (ADR) as a markdown file in the project's `docs/` directory. The ADR should include:
-
-- **Context** — what problem does this feature solve? What's the current state?
-- **Decision** — what approach are we taking and why?
-- **Alternatives considered** — what other approaches were evaluated?
-- **Consequences** — what trade-offs does this decision introduce?
-- **Implementation plan** — step-by-step breakdown of the changes needed
-
-Present the ADR to the reviewer for approval before proceeding to implementation.
-
-## Phase 2: Implementation (after ADR approval)
-
-Once the reviewer approves the design:
-
-1. **Follow existing patterns** — look at how the codebase handles similar features. Match the conventions.
-2. **Incremental PRs** — break the implementation into reviewable chunks rather than one massive change.
-3. **Ask before deciding** — if you encounter an architectural choice not covered by the ADR, ask the reviewer rather than making assumptions.
-4. **Documentation** — update relevant docs, README, or API tables as part of the implementation.
-
-The reviewer will provide background context and guidance. Read any referenced code or documents before starting the ADR.
+1. **Read the ADR carefully** — understand the full design before writing any code. The approach and architectural implications sections define the constraints you're working within.
+2. **Follow the implementation plan** — execute the steps in order. Each step should leave the codebase in a working state.
+3. **Follow existing patterns** — read `CLAUDE.md` and `docs/PATTERNS*.md` if they exist. Match how the codebase already solves similar problems.
+4. **Capture the ADR** — save the design document as an ADR file in the project's `docs/` directory, following the existing naming convention (e.g. `ADR-0015-feature-name.md`). Find the highest existing ADR number and increment it.
+5. **Ask when uncertain** — if the implementation reveals a gap in the design or an ambiguity the ADR doesn't cover, ask the reviewer rather than improvising.
+6. **Commit and create a PR** — when all changes are complete, commit with a clear message, push the branch, and create a PR. Keep the PR body concise: summarize what was built and reference the ADR.

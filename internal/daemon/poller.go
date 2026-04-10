@@ -238,14 +238,14 @@ func taskWindowName(taskType string, taskID int) string {
 	return fmt.Sprintf("review-%d", taskID) // review-triggered refactors
 }
 
-// checkRunningTasks monitors all tasks in running/refactoring status.
+// checkRunningTasks monitors all active tasks (running/refactoring/implementing).
 // For PR-producing tasks: scrapes tmux pane for PR URL → resolved.
 // When the tmux window is gone: marks completed.
 func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 	rows, err := db.Query(`
-		SELECT id, type, repo_path, COALESCE(intent, '')
+		SELECT id, type, repo_path, COALESCE(intent, ''), status
 		FROM claude_tasks
-		WHERE status IN ('running', 'refactoring')
+		WHERE status IN ('running', 'refactoring', 'implementing')
 	`)
 	if err != nil {
 		return
@@ -267,11 +267,12 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 		taskType string
 		repoPath string
 		intent   string
+		status   string
 	}
 	var tasks []task
 	for rows.Next() {
 		var t task
-		if err := rows.Scan(&t.id, &t.taskType, &t.repoPath, &t.intent); err != nil {
+		if err := rows.Scan(&t.id, &t.taskType, &t.repoPath, &t.intent, &t.status); err != nil {
 			continue
 		}
 		tasks = append(tasks, t)
@@ -281,9 +282,10 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 		windowName := taskWindowName(t.taskType, t.id)
 		windowAlive := allWindows[windowName]
 
-		// Scrape for PR URL if this task is expected to produce one
-		// Review-triggered refactors always produce PRs; directives check intent
-		shouldScrape := t.taskType == "review" || prompts.IntentProducesPR(t.intent)
+		// Scrape for PR URL if this task is expected to produce one:
+		// - refactoring/implementing statuses always produce PRs
+		// - running tasks check intent-level flag
+		shouldScrape := t.status == "refactoring" || t.status == "implementing" || prompts.IntentProducesPR(t.intent)
 		if shouldScrape {
 			if target, ok := windowTargets[windowName]; ok {
 				if prUrl := scrapePaneForPR(target); prUrl != "" {

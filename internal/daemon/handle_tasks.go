@@ -154,7 +154,7 @@ func handleDismissClaudeTask(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		if body.ID > 0 {
 			var status string
 			if err := db.QueryRow(`SELECT status FROM claude_tasks WHERE id = ?`, body.ID).Scan(&status); err == nil {
-				if (status == "running" || status == "refactoring") && !body.Force {
+				if (status == "running" || status == "refactoring" || status == "implementing") && !body.Force {
 					w.Header().Set("Content-Type", "application/json")
 					w.WriteHeader(http.StatusConflict)
 					json.NewEncoder(w).Encode(map[string]any{
@@ -178,7 +178,7 @@ func handleDismissClaudeTask(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		var res sql.Result
 		var err error
 		if body.All == "completed" {
-			res, err = db.Exec(`DELETE FROM claude_tasks WHERE status IN ('completed', 'failed', 'resolved', 'refactoring')`)
+			res, err = db.Exec(`DELETE FROM claude_tasks WHERE status IN ('completed', 'failed', 'resolved', 'refactoring', 'implementing')`)
 		} else if body.ID > 0 {
 			res, err = db.Exec(`DELETE FROM claude_tasks WHERE id = ?`, body.ID)
 		} else {
@@ -304,9 +304,22 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 	baseCmd := fmt.Sprintf("claude -w %s --name 'cmdr-task-%d'", worktreeName, cfg.TaskID)
 	var cmd string
 	if cfg.Intent != "" {
-		intentPrompt, err := prompts.GetIntentPrompt(cfg.Intent)
-		if err == nil {
-			escapedIntent := strings.ReplaceAll(intentPrompt, "'", "'\\''")
+		// For design-phase intents (e.g. new-feature), use the design prompt
+		// for the initial dispatch; the intent prompt is used for implementation
+		var systemPrompt string
+		if cfg.RunningStatus == "" || cfg.RunningStatus == "running" {
+			if dp, err := prompts.GetDesignPrompt(cfg.Intent); err == nil && dp != "" {
+				systemPrompt = dp
+			}
+		}
+		if systemPrompt == "" {
+			if ip, err := prompts.GetIntentPrompt(cfg.Intent); err == nil {
+				systemPrompt = ip
+			}
+		}
+
+		if systemPrompt != "" {
+			escapedIntent := strings.ReplaceAll(systemPrompt, "'", "'\\''")
 			cmd = fmt.Sprintf("%s --append-system-prompt '%s' '%s'", baseCmd, escapedIntent, escaped)
 		} else {
 			cmd = fmt.Sprintf("%s '%s'", baseCmd, escaped)
@@ -505,7 +518,7 @@ func cleanupTaskWorktree(db *sql.DB, taskID int) {
 
 // cleanupAllTaskWorktrees removes worktrees for all completed/resolved/refactoring tasks.
 func cleanupAllTaskWorktrees(db *sql.DB) {
-	rows, err := db.Query(`SELECT id, type, repo_path FROM claude_tasks WHERE status IN ('completed', 'resolved', 'refactoring')`)
+	rows, err := db.Query(`SELECT id, type, repo_path FROM claude_tasks WHERE status IN ('completed', 'resolved', 'refactoring', 'implementing')`)
 	if err != nil {
 		return
 	}

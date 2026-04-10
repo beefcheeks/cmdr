@@ -99,3 +99,29 @@ func GetIntentPrompt(id string) (string, error) {
 	}
 	return string(data), nil
 }
+
+// Intents that have a design phase before implementation.
+// Maps intent ID → design prompt filename in prompts root.
+var designPhase = map[string]string{
+	"new-feature": "design",
+}
+
+// GetDesignPrompt returns the design-phase system prompt for an intent,
+// or empty string if the intent has no design phase.
+func GetDesignPrompt(id string) (string, error) {
+	name, ok := designPhase[id]
+	if !ok {
+		return "", nil
+	}
+	data, err := promptFS.ReadFile(name + ".md")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// IntentHasDesignPhase returns whether an intent uses a design-first workflow.
+func IntentHasDesignPhase(id string) bool {
+	_, ok := designPhase[id]
+	return ok
+}
