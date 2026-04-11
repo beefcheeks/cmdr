@@ -189,7 +189,7 @@
 			<span class="text-[10px] font-display font-bold uppercase tracking-widest text-bourbon-500 w-16 shrink-0">Target</span>
 				<select
 					bind:value={repoPath}
-					class="flex-1 bg-bourbon-950 border border-bourbon-800 rounded-lg px-3 py-2.5 text-xs font-mono text-bourbon-200 focus:outline-none focus:border-cmd-500/50"
+					class="flex-1 bg-bourbon-950 border border-bourbon-800 rounded-lg px-3 h-8 text-xs font-mono text-bourbon-200 focus:outline-none focus:border-cmd-500/50"
 				>
 					{#each repos as repo}
 						<option value={repo.path}>{repo.name}</option>

@@ -58,6 +58,9 @@ func Run() error {
 
 	bus := NewEventBus()
 
+	// Mark any ask tasks orphaned by a previous daemon instance
+	cleanupOrphanedAskTasks(database)
+
 	s := scheduler.New(database, scheduler.Hooks{
 		OnCommitsSync: func() {
 			bus.Publish(Event{Type: "commits:sync", Data: true})

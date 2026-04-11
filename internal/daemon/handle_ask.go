@@ -71,7 +71,7 @@ func runAsk(db *sql.DB, bus *EventBus, taskID int, question string) {
 		return
 	}
 
-	log.Printf("cmdr: ask %d started: %s", taskID, question)
+	log.Printf("cmdr: ask %d started (pid %d): %s", taskID, cmd.Process.Pid, question)
 
 	var finalResult, sessionID string
 	scanner := bufio.NewScanner(stdout)
@@ -92,7 +92,6 @@ func runAsk(db *sql.DB, bus *EventBus, taskID int, question string) {
 
 		switch evtType {
 		case "assistant":
-			// Extract text and tool_use blocks from assistant message
 			msg, _ := evt["message"].(map[string]any)
 			if msg == nil {
 				continue
@@ -113,7 +112,6 @@ func runAsk(db *sql.DB, bus *EventBus, taskID int, question string) {
 				case "tool_use":
 					name, _ := b["name"].(string)
 					if name != "" {
-						// Include tool input summary for context
 						detail := toolDetail(name, b["input"])
 						bus.Publish(Event{Type: "claude:ask:stream", Data: map[string]any{
 							"id": taskID, "type": "tool", "tool": name, "detail": detail,
@@ -170,7 +168,18 @@ func failAsk(db *sql.DB, bus *EventBus, taskID int, err error) {
 	log.Printf("cmdr: ask %d failed: %v", taskID, err)
 }
 
-// toolDetail extracts a short description from a tool's input for status display.
+// cleanupOrphanedAskTasks marks any ask tasks left running from a previous
+// daemon instance as failed, since the goroutine reading their output is gone.
+func cleanupOrphanedAskTasks(db *sql.DB) {
+	res, _ := db.Exec(`UPDATE claude_tasks SET status='failed', error_msg='daemon restarted', completed_at=?
+		WHERE type = 'ask' AND status = 'running'`, time.Now().Format(time.RFC3339))
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("cmdr: marked %d orphaned ask tasks as failed", n)
+	}
+}
+
+// --- Tool detail + title helpers ---
+
 func toolDetail(name string, input any) string {
 	m, ok := input.(map[string]any)
 	if !ok {
@@ -179,7 +188,6 @@ func toolDetail(name string, input any) string {
 	switch name {
 	case "Read":
 		if p, ok := m["file_path"].(string); ok {
-			// Shorten vault paths for readability
 			if i := strings.Index(p, "ThoughtQuarry/"); i >= 0 {
 				return p[i+len("ThoughtQuarry/"):]
 			}
@@ -196,6 +204,16 @@ func toolDetail(name string, input any) string {
 	}
 	return ""
 }
+
+func askTitle(question string) string {
+	t := strings.TrimSpace(question)
+	if len(t) > 80 {
+		t = t[:77] + "..."
+	}
+	return t
+}
+
+// --- Continue in interactive session ---
 
 const askSession = "ask_claude"
 
@@ -214,9 +232,9 @@ func handleContinueAsk(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var sessionID, title string
-		err := db.QueryRow(`SELECT COALESCE(claude_session_id, ''), COALESCE(title, '') FROM claude_tasks WHERE id = ?`, body.ID).
-			Scan(&sessionID, &title)
+		var sessionID string
+		err := db.QueryRow(`SELECT COALESCE(claude_session_id, '') FROM claude_tasks WHERE id = ?`, body.ID).
+			Scan(&sessionID)
 		if err != nil {
 			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
 			return
@@ -245,7 +263,6 @@ func handleContinueAsk(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// createAskWindow creates or reuses the ask_claude tmux session and opens a window.
 func createAskWindow(windowName, dir, shellCmd string) (string, error) {
 	args := []string{"bash", "-c", shellCmd}
 
@@ -261,17 +278,6 @@ func createAskWindow(windowName, dir, shellCmd string) (string, error) {
 		}
 	}
 
-	// Switch to the session so user sees it
 	exec.Command("tmux", "switch-client", "-t", askSession).Run()
-
 	return askSession + ":" + windowName, nil
-}
-
-// askTitle derives a display title from the question text.
-func askTitle(question string) string {
-	t := strings.TrimSpace(question)
-	if len(t) > 80 {
-		t = t[:77] + "..."
-	}
-	return t
 }

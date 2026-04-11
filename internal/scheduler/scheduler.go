@@ -41,12 +41,6 @@ func New(db *sql.DB, hooks Hooks) *Scheduler {
 func (s *Scheduler) register(db *sql.DB, hooks Hooks) {
 	s.tasks = []Task{
 		{
-			Name:        "hello",
-			Description: "Example task — prints a message",
-			Schedule:    "0 0 * * * *", // every hour
-			Fn:          tasks.Hello,
-		},
-		{
 			Name:        "sync-commits",
 			Description: "Fetch new commits from monitored repos",
 			Schedule:    "0 */5 * * * *", // every 5 minutes
@@ -57,6 +51,12 @@ func (s *Scheduler) register(db *sql.DB, hooks Hooks) {
 			Description: "Delete commits older than 2 weeks",
 			Schedule:    "0 0 3 * * *", // daily at 3am
 			Fn:          tasks.PruneCommits(db),
+		},
+		{
+			Name:        "distill",
+			Description: "Process raw ThoughtQuarry notes into concepts",
+			Schedule:    "0 7 * * * *", // every hour at :07
+			Fn:          tasks.Distill,
 		},
 	}
 }
