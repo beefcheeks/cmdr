@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { X, Send, Trash2 } from 'lucide-svelte';
+	import LaunchGuard from './LaunchGuard.svelte';
 	import { compositeAndSerialize } from '$lib/composite';
 	import {
 		getRepos,
@@ -246,15 +247,10 @@
 					<span class="text-[10px] font-mono">{submitProgress || 'dispatching'}</span>
 				</div>
 			{:else}
-				<button
-					onclick={handleSubmit}
-					disabled={!serialized.trim() || !repoPath}
-					class="flex items-center gap-1.5 text-xs text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer
-						disabled:opacity-40 disabled:cursor-not-allowed"
-				>
+				<LaunchGuard {repoPath} action={handleSubmit} disabled={!serialized.trim() || !repoPath}>
 					<Send size={12} />
 					Dispatch to Claude
-				</button>
+				</LaunchGuard>
 			{/if}
 		</div>
 	</div>

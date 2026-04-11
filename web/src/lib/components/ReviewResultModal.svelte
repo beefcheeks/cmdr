@@ -2,6 +2,7 @@
 	import { X, Wrench, ExternalLink, Pencil, Trash2, MessageSquarePlus, Undo2 } from 'lucide-svelte';
 	import { marked } from 'marked';
 	import { startRefactor, updateClaudeTaskResult } from '$lib/api';
+	import LaunchGuard from './LaunchGuard.svelte';
 	import {
 		parseReviewSections,
 		reconstructMarkdown,
@@ -14,12 +15,14 @@
 		result,
 		taskId,
 		prUrl,
+		repoPath = '',
 		onclose,
 		onupdate
 	}: {
 		result: string;
 		taskId: number;
 		prUrl?: string;
+		repoPath?: string;
 		onclose: () => void;
 		onupdate?: (result: string) => void;
 	} = $props();
@@ -27,7 +30,6 @@
 	let editing = $state(false);
 	let draft = $state('');
 	let saving = $state(false);
-	let refactoring = $state(false);
 	let bodyEl: HTMLDivElement | undefined = $state(undefined);
 	let editHeight: number | null = $state(null);
 
@@ -142,24 +144,19 @@
 	}
 
 	// --- Refactor ---
-	async function handleRefactor() {
-		refactoring = true;
-		try {
-			// Flush any pending changes before starting
-			if (stagedCount > 0) {
-				const updated: ParsedReview = {
-					preamble: parsedReview!.preamble,
-					sections: parsedReview!.sections.filter((_, i) => !stagedDeletions.has(i))
-				};
-				await persistResult(reconstructMarkdown(updated));
-				stagedDeletions = new Set();
-			}
-			await startRefactor(taskId);
-			onclose();
-		} catch (e) {
-			refactoring = false;
+	async function launchRefactor() {
+		// Flush any pending changes before starting
+		if (stagedCount > 0) {
+			const updated: ParsedReview = {
+				preamble: parsedReview!.preamble,
+				sections: parsedReview!.sections.filter((_, i) => !stagedDeletions.has(i))
+			};
+			await persistResult(reconstructMarkdown(updated));
+			stagedDeletions = new Set();
 		}
+		await startRefactor(taskId);
 	}
+
 
 	function autofocus(node: HTMLElement) {
 		requestAnimationFrame(() => node.focus());
@@ -327,7 +324,7 @@
 												onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveNote(); } if (e.key === 'Escape') cancelNote(); }}
 											></textarea>
 											<div class="flex items-center justify-between px-3 py-1.5">
-												<span class="text-[9px] text-bourbon-700">Cmd+Enter to save</span>
+												<span class="text-[9px] text-bourbon-700">⌘+Enter to save</span>
 												<div class="flex items-center gap-3">
 													<button onclick={cancelNote} class="text-[10px] text-bourbon-600 hover:text-bourbon-400 cursor-pointer">cancel</button>
 													<button onclick={saveNote} class="text-[10px] text-run-400 hover:text-run-300 cursor-pointer">save</button>
@@ -379,16 +376,10 @@
 					</button>
 				{/if}
 			</div>
-			<div class="flex items-center gap-3">
-				<button
-					onclick={handleRefactor}
-					disabled={refactoring}
-					class="flex items-center gap-1.5 text-[10px] font-mono text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer disabled:opacity-50"
-				>
-					<Wrench size={12} />
-					{refactoring ? 'Starting...' : 'Start Refactor'}
-				</button>
-			</div>
+			<LaunchGuard {repoPath} action={launchRefactor} onlaunched={onclose}>
+				<Wrench size={12} />
+				Start Refactor
+			</LaunchGuard>
 		</div>
 	</div>
 </div>

@@ -209,11 +209,11 @@ func handleDismissClaudeTask(db *sql.DB, bus *EventBus) http.HandlerFunc {
 
 // killTaskWindow kills the tmux window for a task if it's still alive.
 func killTaskWindow(db *sql.DB, taskID int) {
-	var taskType string
-	if err := db.QueryRow(`SELECT type FROM claude_tasks WHERE id = ?`, taskID).Scan(&taskType); err != nil {
+	var taskType, status string
+	if err := db.QueryRow(`SELECT type, status FROM claude_tasks WHERE id = ?`, taskID).Scan(&taskType, &status); err != nil {
 		return
 	}
-	windowName := taskWindowName(taskType, taskID)
+	windowName := taskWindowName(taskType, status, taskID)
 
 	// Find the window across all sessions and kill it
 	sessions, err := tmux.ListSessions()
@@ -391,6 +391,10 @@ func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			return
 		}
 
+		if checkUnpushed(w, repoPath) {
+			return
+		}
+
 		shortSha := commitSha
 		if len(shortSha) > 7 {
 			shortSha = shortSha[:7]
@@ -454,6 +458,11 @@ func handleStartImplementation(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			return
 		}
 
+		// Pre-flight: worktrees branch from HEAD, so unpushed work would be missed
+		if checkUnpushed(w, repoPath) {
+			return
+		}
+
 		// Build the prompt with the ADR and commit instructions
 		var prompt string
 		if body.CommitADR {
@@ -479,8 +488,8 @@ func handleStartImplementation(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			Intent:         "new-feature",
 			RepoPath:       repoPath,
 			UserPrompt:     prompt,
-			WindowPrefix:   "task",
-			WorktreePrefix: "directive",
+			WindowPrefix:   "impl",
+			WorktreePrefix: "impl",
 			RunningStatus:  "implementing",
 		})
 		if err != nil {
@@ -495,6 +504,36 @@ func handleStartImplementation(db *sql.DB, bus *EventBus) http.HandlerFunc {
 }
 
 // --- Helpers ---
+
+// checkUnpushed returns true (and writes a 409 response) if the repo has unpushed commits.
+// Callers should return early when this returns true.
+func checkUnpushed(w http.ResponseWriter, repoPath string) bool {
+	if repoPath == "" {
+		return false
+	}
+	ahead := unpushedCount(repoPath)
+	if ahead == 0 {
+		return false
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	json.NewEncoder(w).Encode(map[string]any{
+		"error":    fmt.Sprintf("%d unpushed commit(s) on the current branch", ahead),
+		"unpushed": ahead,
+	})
+	return true
+}
+
+// unpushedCount returns how many commits the current branch is ahead of its upstream.
+// Returns 0 if there's no upstream or if the check fails.
+func unpushedCount(repoPath string) int {
+	out, err := exec.Command("git", "-C", repoPath, "rev-list", "--count", "@{u}..HEAD").Output()
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return n
+}
 
 // extractTitle pulls a display title from the review result.
 var headingRe = regexp.MustCompile(`(?m)^#{1,3}\s+(.+)$`)
@@ -553,7 +592,11 @@ func resolveImageRefs(content string) string {
 // --- Worktree cleanup (unified) ---
 
 // taskWorktreeInfo returns the worktree name and marker path for a task based on its type.
-func taskWorktreeInfo(taskType string, taskID int) (worktreeName string, markerPath string) {
+func taskWorktreeInfo(taskType, status string, taskID int) (worktreeName string, markerPath string) {
+	if taskType == "directive" && status == "implementing" {
+		worktreeName = fmt.Sprintf("impl-%d", taskID)
+		return
+	}
 	switch taskType {
 	case "directive":
 		worktreeName = fmt.Sprintf("directive-%d", taskID)
@@ -574,28 +617,28 @@ func cleanupTaskWorktree(db *sql.DB, taskID int) {
 		return
 	}
 	// Only clean up tasks that are in a worktree-using state
-	if status != "refactoring" && status != "resolved" && status != "completed" && status != "running" {
+	if status != "refactoring" && status != "implementing" && status != "resolved" && status != "completed" && status != "running" {
 		return
 	}
 
-	worktreeName, markerPath := taskWorktreeInfo(taskType, taskID)
+	worktreeName, markerPath := taskWorktreeInfo(taskType, status, taskID)
 	removeWorktree(repoPath, taskID, worktreeName, markerPath)
 }
 
 // cleanupAllTaskWorktrees removes worktrees for all completed/resolved/refactoring tasks.
 func cleanupAllTaskWorktrees(db *sql.DB) {
-	rows, err := db.Query(`SELECT id, type, repo_path FROM claude_tasks WHERE status IN ('completed', 'resolved', 'refactoring', 'implementing')`)
+	rows, err := db.Query(`SELECT id, type, repo_path, status FROM claude_tasks WHERE status IN ('completed', 'resolved', 'refactoring', 'implementing')`)
 	if err != nil {
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id int
-		var taskType, repoPath string
-		if err := rows.Scan(&id, &taskType, &repoPath); err != nil {
+		var taskType, repoPath, status string
+		if err := rows.Scan(&id, &taskType, &repoPath, &status); err != nil {
 			continue
 		}
-		worktreeName, markerPath := taskWorktreeInfo(taskType, id)
+		worktreeName, markerPath := taskWorktreeInfo(taskType, status, id)
 		removeWorktree(repoPath, id, worktreeName, markerPath)
 	}
 }

@@ -64,8 +64,8 @@
 		<div class="flex flex-col gap-1">
 			{#each $visibleTasksStore as task}
 				<button
-					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors
-						{task.type === 'ask' || task.status === 'draft' || (task.status === 'resolved' && task.prUrl) || (task.status === 'completed' && (task.type === 'review' || task.intent === 'new-feature')) ? 'hover:bg-bourbon-800/50 cursor-pointer' : ''}"
+					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors hover:bg-bourbon-800/50
+						{task.type === 'ask' || task.status === 'draft' || (task.status === 'resolved' && task.prUrl) || ((task.status === 'completed' || task.status === 'done') && (task.type === 'review' || task.intent === 'new-feature')) ? 'cursor-pointer' : ''}"
 					onclick={() => {
 						if (task.type === 'ask') {
 							onask(task.id);

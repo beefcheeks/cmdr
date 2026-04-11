@@ -220,6 +220,8 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/commits/flag", handleToggleFlag(database))
 	mux.HandleFunc("/api/repos/sync", handleSyncRepos(database, bus))
 	mux.HandleFunc("/api/repos/pull", handleRepoPull(bus))
+	mux.HandleFunc("/api/repos/push", handleRepoPush())
+	mux.HandleFunc("/api/repos/unpushed", handleUnpushedCheck())
 
 	// Analytics
 	mux.HandleFunc("/api/analytics/activity", handleActivityAnalytics(database))

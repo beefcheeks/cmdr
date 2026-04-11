@@ -127,6 +127,10 @@ func handleSubmitDirective(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			return
 		}
 
+		if checkUnpushed(w, repoPath) {
+			return
+		}
+
 		res, err := launchTask(db, bus, TaskLaunchConfig{
 			TaskID:         body.ID,
 			Intent:         body.Intent,

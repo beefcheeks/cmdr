@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { X, Pencil, Wrench, MessageSquarePlus, Trash2, Undo2, FileCheck } from 'lucide-svelte';
 	import { marked } from 'marked';
-	import { updateClaudeTaskResult } from '$lib/api';
+	import { updateClaudeTaskResult, startImplementation } from '$lib/api';
+	import LaunchGuard from './LaunchGuard.svelte';
 	import {
 		parseADR,
 		reconstructADR,
@@ -13,21 +14,20 @@
 	let {
 		result,
 		taskId,
+		repoPath = '',
 		onclose,
-		onupdate,
-		onimplement
+		onupdate
 	}: {
 		result: string;
 		taskId: number;
+		repoPath?: string;
 		onclose: () => void;
 		onupdate?: (result: string) => void;
-		onimplement: (taskId: number, commitADR: boolean) => void;
 	} = $props();
 
 	let editing = $state(false);
 	let draft = $state('');
 	let saving = $state(false);
-	let implementing = $state(false);
 	let commitADR = $state(true);
 	let bodyEl: HTMLDivElement | undefined = $state(undefined);
 	let editHeight: number | null = $state(null);
@@ -115,16 +115,8 @@
 		persistResult(newMd);
 	}
 
-	// --- Implementation ---
-	async function handleImplement() {
-		implementing = true;
-		try {
-			onimplement(taskId, commitADR);
-			onclose();
-		} catch {
-			implementing = false;
-		}
-	}
+
+
 
 	function autofocus(node: HTMLElement) {
 		requestAnimationFrame(() => node.focus());
@@ -268,7 +260,7 @@
 											onkeydown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); saveNote(); } if (e.key === 'Escape') cancelNote(); }}
 										></textarea>
 										<div class="flex items-center justify-between px-3 py-1.5">
-											<span class="text-[9px] text-bourbon-700">Cmd+Enter to save</span>
+											<span class="text-[9px] text-bourbon-700">⌘+Enter to save</span>
 											<div class="flex items-center gap-3">
 												<button onclick={cancelNote} class="text-[10px] text-bourbon-600 hover:text-bourbon-400 cursor-pointer">cancel</button>
 												<button onclick={saveNote} class="text-[10px] text-run-400 hover:text-run-300 cursor-pointer">save</button>
@@ -310,14 +302,10 @@
 					</span>
 				</button>
 			</div>
-			<button
-				onclick={handleImplement}
-				disabled={implementing}
-				class="flex items-center gap-1.5 text-[10px] font-mono text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer disabled:opacity-50"
-			>
+			<LaunchGuard {repoPath} action={() => startImplementation(taskId, commitADR)} onlaunched={onclose}>
 				<Wrench size={12} />
-				{implementing ? 'Starting...' : 'Start Implementation'}
-			</button>
+				Start Implementation
+			</LaunchGuard>
 		</div>
 	</div>
 </div>

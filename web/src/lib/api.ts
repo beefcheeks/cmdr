@@ -383,20 +383,34 @@ export function updateClaudeTaskResult(id: number, result: string): Promise<{ st
 	});
 }
 
-export function startImplementation(taskId: number, commitADR: boolean): Promise<{ target: string; session: string; window: string }> {
-	return request('/design/implement', {
+export async function startImplementation(taskId: number, commitADR: boolean): Promise<{ target: string; session: string; window: string }> {
+	const res = await fetch(`${BASE}/design/implement`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ taskId, commitADR })
 	});
+	const data = await res.json();
+	if (!res.ok) {
+		const err = new Error(data.error || `${res.status} ${res.statusText}`) as Error & { unpushed?: number };
+		if (data.unpushed) err.unpushed = data.unpushed;
+		throw err;
+	}
+	return data;
 }
 
-export function startRefactor(taskId: number): Promise<{ target: string; session: string; window: string }> {
-	return request('/review/refactor', {
+export async function startRefactor(taskId: number): Promise<{ target: string; session: string; window: string }> {
+	const res = await fetch(`${BASE}/review/refactor`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ taskId })
 	});
+	const data = await res.json();
+	if (!res.ok) {
+		const err = new Error(data.error || `${res.status} ${res.statusText}`) as Error & { unpushed?: number };
+		if (data.unpushed) err.unpushed = data.unpushed;
+		throw err;
+	}
+	return data;
 }
 
 export function dismissAllClaudeTasks(): Promise<{ dismissed: number }> {
@@ -412,6 +426,14 @@ export function openInEditor(repoPath: string, file: string, line: number): Prom
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ repoPath, file, line })
+	});
+}
+
+export function pushRepo(repoPath: string): Promise<{ status: string; message: string }> {
+	return request('/repos/push', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ repoPath })
 	});
 }
 
@@ -441,12 +463,19 @@ export function saveDirective(id: number, repoPath: string, content: string, int
 	});
 }
 
-export function submitDirective(id: number, intent?: string): Promise<{ status: string; target: string; session: string }> {
-	return request('/directives/submit', {
+export async function submitDirective(id: number, intent?: string): Promise<{ status: string; target: string; session: string }> {
+	const res = await fetch(`${BASE}/directives/submit`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ id, intent })
 	});
+	const data = await res.json();
+	if (!res.ok) {
+		const err = new Error(data.error || `${res.status} ${res.statusText}`) as Error & { unpushed?: number };
+		if (data.unpushed) err.unpushed = data.unpushed;
+		throw err;
+	}
+	return data;
 }
 
 export interface DirectiveIntent {

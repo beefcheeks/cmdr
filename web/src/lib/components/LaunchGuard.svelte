@@ -1,0 +1,91 @@
+<script lang="ts">
+	import { GitBranch } from 'lucide-svelte';
+	import { pushRepo } from '$lib/api';
+	import type { Snippet } from 'svelte';
+
+	let {
+		repoPath,
+		action,
+		onlaunched,
+		children,
+		disabled = false
+	}: {
+		repoPath: string;
+		action: () => Promise<any>;
+		onlaunched?: () => void;
+		children: Snippet;
+		disabled?: boolean;
+	} = $props();
+
+	let launching = $state(false);
+	let unpushed = $state<number | null>(null);
+	let pushing = $state(false);
+
+	async function checkUnpushed(): Promise<boolean> {
+		if (!repoPath) return false;
+		try {
+			const res = await fetch(`/api/repos/unpushed?repo=${encodeURIComponent(repoPath)}`);
+			const data = await res.json();
+			if (data.unpushed > 0) {
+				unpushed = data.unpushed;
+				return true;
+			}
+		} catch { /* treat as no unpushed */ }
+		return false;
+	}
+
+	async function handleLaunch() {
+		if (launching || disabled) return;
+		launching = true;
+		unpushed = null;
+
+		// Pre-flight check
+		if (await checkUnpushed()) {
+			launching = false;
+			return;
+		}
+
+		try {
+			await action();
+			onlaunched?.();
+		} catch { /* action failed for non-unpushed reasons */ }
+		launching = false;
+	}
+
+	async function handlePush() {
+		if (!repoPath || pushing) return;
+		pushing = true;
+		try {
+			await pushRepo(repoPath);
+			unpushed = null;
+		} catch { /* silent */ }
+		pushing = false;
+	}
+</script>
+
+<div class="flex items-center gap-3">
+	{#if unpushed}
+		<div class="flex items-center gap-2">
+			<span class="text-[10px] font-mono text-red-400">
+				{unpushed} unpushed commit{unpushed !== 1 ? 's' : ''}
+			</span>
+			{#if repoPath}
+				<button
+					onclick={handlePush}
+					disabled={pushing}
+					class="flex items-center gap-1 text-[10px] font-mono text-run-400 hover:text-run-300 transition-colors cursor-pointer disabled:opacity-50"
+				>
+					<GitBranch size={10} />
+					{pushing ? 'pushing...' : 'push'}
+				</button>
+			{/if}
+		</div>
+	{/if}
+	<button
+		onclick={handleLaunch}
+		disabled={launching || disabled}
+		class="flex items-center gap-1.5 text-[10px] font-mono text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer disabled:opacity-50"
+	>
+		{@render children()}
+	</button>
+</div>

@@ -512,6 +512,47 @@ func detectDefaultBranch(repoPath string) string {
 	return "master"
 }
 
+func handleUnpushedCheck() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		repoPath := r.URL.Query().Get("repo")
+		if repoPath == "" {
+			http.Error(w, `{"error":"repo is required"}`, http.StatusBadRequest)
+			return
+		}
+		count := unpushedCount(repoPath)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]int{"unpushed": count})
+	}
+}
+
+func handleRepoPush() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var body struct {
+			RepoPath string `json:"repoPath"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RepoPath == "" {
+			http.Error(w, `{"error":"repoPath is required"}`, http.StatusBadRequest)
+			return
+		}
+
+		out, err := exec.Command("git", "-C", body.RepoPath, "push").CombinedOutput()
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			log.Printf("cmdr: push failed: %s: %s", body.RepoPath, strings.TrimSpace(string(out)))
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "message": strings.TrimSpace(string(out))})
+			return
+		}
+
+		log.Printf("cmdr: push: %s: success", body.RepoPath)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "message": "Pushed successfully"})
+	}
+}
+
 func jsonErr(err error) string {
 	return fmt.Sprintf(`{"error":%q}`, err.Error())
 }

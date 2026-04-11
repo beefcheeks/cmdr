@@ -231,7 +231,10 @@ func findAncestorPane(pid int, ppidMap map[int]int, shellPIDs map[int]*claudePan
 // which are derived from task type and ID via taskWindowName/taskWorktreeInfo.
 
 // taskWindowName returns the tmux window name for a task based on its type.
-func taskWindowName(taskType string, taskID int) string {
+func taskWindowName(taskType, status string, taskID int) string {
+	if taskType == "directive" && status == "implementing" {
+		return fmt.Sprintf("impl-%d", taskID)
+	}
 	if taskType == "directive" {
 		return fmt.Sprintf("task-%d", taskID)
 	}
@@ -282,7 +285,7 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 	}
 
 	for _, t := range tasks {
-		windowName := taskWindowName(t.taskType, t.id)
+		windowName := taskWindowName(t.taskType, t.status, t.id)
 		windowAlive := allWindows[windowName]
 
 		// Scrape for PR URL if this task is expected to produce one:
@@ -359,7 +362,7 @@ func checkResolvedTasks(db *sql.DB, bus *EventBus) {
 	}
 
 	for _, t := range tasks {
-		worktreeName, _ := taskWorktreeInfo(t.taskType, t.id)
+		worktreeName, _ := taskWorktreeInfo(t.taskType, "resolved", t.id)
 		worktreeExists := worktreeAlive(t.repoPath, worktreeName)
 		prOpen := t.prUrl != "" && isPROpen(t.repoPath, t.prUrl)
 

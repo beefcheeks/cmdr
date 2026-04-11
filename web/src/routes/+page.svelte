@@ -7,7 +7,6 @@
 	import BrewCard from '$lib/components/BrewCard.svelte';
 	import SessionCard from '$lib/components/SessionCard.svelte';
 	import CommitCard from '$lib/components/CommitCard.svelte';
-	import { startImplementation } from '$lib/api';
 	import AskBubble from '$lib/components/AskBubble.svelte';
 	import ClaudeInboxCard from '$lib/components/ClaudeInboxCard.svelte';
 	import DiffModal from '$lib/components/DiffModal.svelte';
@@ -151,13 +150,9 @@
 	<DesignResultModal
 		result={designResult}
 		taskId={designTask?.id ?? 0}
+		repoPath={designTask?.repoPath ?? ''}
 		onclose={() => { designResult = null; designTask = null; }}
 		onupdate={(r) => { designResult = r; }}
-		onimplement={async (id, commitADR) => {
-			await startImplementation(id, commitADR);
-			designResult = null;
-			designTask = null;
-		}}
 	/>
 {/if}
 
@@ -168,7 +163,7 @@
 
 <!-- Review Result Modal -->
 {#if reviewResult}
-	<ReviewResultModal result={reviewResult} taskId={reviewTask?.id ?? 0} prUrl={reviewTask?.prUrl} onclose={() => { reviewResult = null; reviewTask = null; }} onupdate={(r) => { reviewResult = r; }} />
+	<ReviewResultModal result={reviewResult} taskId={reviewTask?.id ?? 0} prUrl={reviewTask?.prUrl} repoPath={reviewTask?.repoPath ?? ''} onclose={() => { reviewResult = null; reviewTask = null; }} onupdate={(r) => { reviewResult = r; }} />
 {/if}
 
 <!-- Draft Modal -->
