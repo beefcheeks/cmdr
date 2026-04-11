@@ -340,6 +340,24 @@ export interface ClaudeTaskResult {
 	intent?: string;
 }
 
+// Ask (vault Q&A)
+
+export function askClaude(question: string): Promise<{ id: number; status: string }> {
+	return request('/ask', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ question })
+	});
+}
+
+export function continueAsk(id: number): Promise<{ target: string }> {
+	return request('/ask/continue', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id })
+	});
+}
+
 export function getClaudeTasks(): Promise<ClaudeTask[]> {
 	return request('/claude/tasks');
 }

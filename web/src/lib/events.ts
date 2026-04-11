@@ -7,6 +7,7 @@ type EventMap = {
 	'claude:sessions': ClaudeSession[];
 	'analytics:activity': ActivityResponse;
 	'claude:task': Partial<ClaudeTask> & { id: number; status: string };
+	'claude:ask:stream': { id: number; type: 'text' | 'tool' | 'done' | 'error'; text?: string; tool?: string; detail?: string; error?: string };
 	'brew:outdated': BrewOutdated;
 	'commits:sync': boolean;
 	'commits:watermark': { latestId: number };

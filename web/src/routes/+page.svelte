@@ -7,9 +7,11 @@
 	import BrewCard from '$lib/components/BrewCard.svelte';
 	import SessionCard from '$lib/components/SessionCard.svelte';
 	import CommitCard from '$lib/components/CommitCard.svelte';
+	import AskBubble from '$lib/components/AskBubble.svelte';
 	import ClaudeInboxCard from '$lib/components/ClaudeInboxCard.svelte';
 	import DiffModal from '$lib/components/DiffModal.svelte';
 	import ReviewResultModal from '$lib/components/ReviewResultModal.svelte';
+	import AskResultModal from '$lib/components/AskResultModal.svelte';
 	import DraftModal from '$lib/components/DraftModal.svelte';
 
 	const now = new Date();
@@ -46,6 +48,9 @@
 	// --- Review result modal ---
 	let reviewResult: string | null = $state(null);
 	let reviewTask: ClaudeTask | null = $state(null);
+
+	// --- Ask modal ---
+	let askTaskId: number | null = $state(null);
 
 	// --- Draft modal ---
 	let showDraft = $state(false);
@@ -90,6 +95,7 @@
 		<ClaudeInboxCard
 			onviewresult={(task, r) => { reviewTask = task; reviewResult = r; }}
 			ondraft={(taskId, repoPath) => openDraft(repoPath, undefined, taskId)}
+			onask={(id) => { askTaskId = id; }}
 		/>
 
 		{#if $commitsLoaded}
@@ -126,6 +132,11 @@
 	/>
 {/if}
 
+<!-- Ask Result Modal -->
+{#if askTaskId}
+	<AskResultModal taskId={askTaskId} onclose={() => { askTaskId = null; }} />
+{/if}
+
 <!-- Review Result Modal -->
 {#if reviewResult}
 	<ReviewResultModal result={reviewResult} taskId={reviewTask?.id ?? 0} prUrl={reviewTask?.prUrl} onclose={() => { reviewResult = null; reviewTask = null; }} onupdate={(r) => { reviewResult = r; }} />
@@ -138,3 +149,6 @@
 		onclose={() => { showDraft = false; draftInitial = undefined; }}
 	/>
 {/if}
+
+<!-- Ask Bubble -->
+<AskBubble />

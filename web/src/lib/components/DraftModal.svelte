@@ -162,7 +162,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between px-6 py-4 border-b border-bourbon-800 shrink-0">
 			<div class="flex items-center gap-3">
-				<h2 class="font-display text-xs font-bold uppercase tracking-widest text-cmd-400">New Directive</h2>
+				<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">New Directive</h2>
 				{#if saving}
 					<span class="text-[9px] font-mono text-bourbon-600">saving...</span>
 				{/if}
@@ -189,7 +189,7 @@
 			<span class="text-[10px] font-display font-bold uppercase tracking-widest text-bourbon-500 w-16 shrink-0">Target</span>
 				<select
 					bind:value={repoPath}
-					class="flex-1 bg-bourbon-950 border border-bourbon-800 rounded-lg px-3 py-1.5 text-xs font-mono text-bourbon-200 focus:outline-none focus:border-cmd-500/50"
+					class="flex-1 bg-bourbon-950 border border-bourbon-800 rounded-lg px-3 py-2.5 text-xs font-mono text-bourbon-200 focus:outline-none focus:border-cmd-500/50"
 				>
 					{#each repos as repo}
 						<option value={repo.path}>{repo.name}</option>

@@ -111,4 +111,15 @@
 			active:translate-y-0.5 active:shadow-none
 			transition-all cursor-pointer;
 	}
+
+	.insight-callout {
+		@apply border border-cmd-700 rounded-xl my-4 overflow-hidden;
+	}
+	.insight-header {
+		@apply font-display text-[10px] font-bold uppercase tracking-widest
+			text-cmd-400 px-4 py-2 border-b border-cmd-700 bg-cmd-700/20;
+	}
+	.insight-body {
+		@apply px-4 py-3 bg-cmd-700/10;
+	}
 }

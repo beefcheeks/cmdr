@@ -246,6 +246,10 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/review/refactor", handleStartRefactor(database, bus))
 	mux.HandleFunc("/api/claude/tasks/resolve", handleResolveTask(database, bus))
 
+	// Ask (headless vault Q&A)
+	mux.HandleFunc("/api/ask", handleAsk(database, bus))
+	mux.HandleFunc("/api/ask/continue", handleContinueAsk(database))
+
 	// Directives (draft → submit via claude_tasks)
 	mux.HandleFunc("/api/directives/create", handleCreateDirective(database, bus))
 	mux.HandleFunc("/api/directives/save", handleSaveDirective(database, bus))

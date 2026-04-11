@@ -155,6 +155,13 @@ func migrate(d *sql.DB) error {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN intent TEXT NOT NULL DEFAULT ''`)
 	}
 
+	// Add claude_session_id column to claude_tasks if missing (for --resume)
+	var hasSessionID bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='claude_session_id'`).Scan(&hasSessionID)
+	if !hasSessionID {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN claude_session_id TEXT NOT NULL DEFAULT ''`)
+	}
+
 	// Clear stale titles on directives (now derived on read)
 	d.Exec(`UPDATE claude_tasks SET title='' WHERE type='directive'`)
 

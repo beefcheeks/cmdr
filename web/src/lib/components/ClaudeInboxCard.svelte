@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CheckCircle, XCircle, Wrench, GitPullRequestArrow, X, Pencil, Plus } from 'lucide-svelte';
+	import { CheckCircle, XCircle, Wrench, GitPullRequestArrow, X, Pencil, Plus, MessageCircleQuestion } from 'lucide-svelte';
 	import { getClaudeTaskResult, type ClaudeTask } from '$lib/api';
 	import {
 		loaded as loadedStore,
@@ -12,10 +12,12 @@
 
 	let {
 		onviewresult,
-		ondraft
+		ondraft,
+		onask
 	}: {
 		onviewresult: (task: ClaudeTask, result: string) => void;
 		ondraft: (taskId?: number, repoPath?: string) => void;
+		onask: (taskId: number) => void;
 	} = $props();
 
 	async function viewResult(task: ClaudeTask) {
@@ -63,9 +65,11 @@
 			{#each $visibleTasksStore as task}
 				<button
 					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
-						{task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'implementing' || task.status === 'draft' ? 'hover:bg-bourbon-800/50' : ''}"
+						{task.type === 'ask' || task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'implementing' || task.status === 'draft' ? 'hover:bg-bourbon-800/50' : ''}"
 					onclick={() => {
-						if (task.status === 'draft') {
+						if (task.type === 'ask') {
+							onask(task.id);
+						} else if (task.status === 'draft') {
 							ondraft(task.id, task.repoPath);
 						} else if (task.status === 'resolved' && task.prUrl) {
 							window.open(task.prUrl, '_blank');
@@ -73,12 +77,16 @@
 							viewResult(task);
 						}
 					}}
-					disabled={task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring' && task.status !== 'implementing' && task.status !== 'draft'}
+					disabled={task.type !== 'ask' && task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring' && task.status !== 'implementing' && task.status !== 'draft'}
 				>
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">
-						{#if task.status === 'draft'}
+						{#if task.type === 'ask' && task.status === 'completed'}
+							<span class="text-cmd-400"><MessageCircleQuestion size={15} /></span>
+						{:else if task.status === 'draft'}
 							<span class="text-cmd-400"><Pencil size={15} /></span>
+						{:else if task.type === 'ask' && task.status === 'running'}
+							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-cmd-500 rounded-full animate-spin"></div>
 						{:else if task.status === 'running' || task.status === 'pending'}
 							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
 						{:else if task.status === 'refactoring' || task.status === 'implementing'}
