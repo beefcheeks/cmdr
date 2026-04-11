@@ -245,8 +245,9 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/claude/tasks/update", handleUpdateClaudeTaskResult(database))
 	mux.HandleFunc("/api/claude/tasks/dismiss", handleDismissClaudeTask(database, bus))
 
-	// Refactor
+	// Refactor + Implementation
 	mux.HandleFunc("/api/review/refactor", handleStartRefactor(database, bus))
+	mux.HandleFunc("/api/design/implement", handleStartImplementation(database, bus))
 	mux.HandleFunc("/api/claude/tasks/resolve", handleResolveTask(database, bus))
 
 	// Ask (headless vault Q&A)

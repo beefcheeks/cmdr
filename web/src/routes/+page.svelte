@@ -7,10 +7,12 @@
 	import BrewCard from '$lib/components/BrewCard.svelte';
 	import SessionCard from '$lib/components/SessionCard.svelte';
 	import CommitCard from '$lib/components/CommitCard.svelte';
+	import { startImplementation } from '$lib/api';
 	import AskBubble from '$lib/components/AskBubble.svelte';
 	import ClaudeInboxCard from '$lib/components/ClaudeInboxCard.svelte';
 	import DiffModal from '$lib/components/DiffModal.svelte';
 	import ReviewResultModal from '$lib/components/ReviewResultModal.svelte';
+	import DesignResultModal from '$lib/components/DesignResultModal.svelte';
 	import AskResultModal from '$lib/components/AskResultModal.svelte';
 	import DraftModal from '$lib/components/DraftModal.svelte';
 
@@ -48,6 +50,10 @@
 	// --- Review result modal ---
 	let reviewResult: string | null = $state(null);
 	let reviewTask: ClaudeTask | null = $state(null);
+
+	// --- Design result modal ---
+	let designResult: string | null = $state(null);
+	let designTask: ClaudeTask | null = $state(null);
 
 	// --- Ask modal ---
 	let askTaskId: number | null = $state(null);
@@ -93,7 +99,15 @@
 	<!-- Right column: Inbox + Commits -->
 	<div class="flex flex-col gap-4">
 		<ClaudeInboxCard
-			onviewresult={(task, r) => { reviewTask = task; reviewResult = r; }}
+			onviewresult={(task, r) => {
+				if (task.intent === 'new-feature') {
+					designTask = task;
+					designResult = r;
+				} else {
+					reviewTask = task;
+					reviewResult = r;
+				}
+			}}
 			ondraft={(taskId, repoPath) => openDraft(repoPath, undefined, taskId)}
 			onask={(id) => { askTaskId = id; }}
 		/>
@@ -128,6 +142,21 @@
 				updateCommit(modalCommit.id, { reviewCount: 0 });
 				modalCommit = { ...modalCommit, reviewCount: 0 };
 			}
+		}}
+	/>
+{/if}
+
+<!-- Design Result Modal -->
+{#if designResult}
+	<DesignResultModal
+		result={designResult}
+		taskId={designTask?.id ?? 0}
+		onclose={() => { designResult = null; designTask = null; }}
+		onupdate={(r) => { designResult = r; }}
+		onimplement={async (id, commitADR) => {
+			await startImplementation(id, commitADR);
+			designResult = null;
+			designTask = null;
 		}}
 	/>
 {/if}

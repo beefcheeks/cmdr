@@ -46,7 +46,8 @@
 		prose-p:text-bourbon-300
 		prose-strong:text-bourbon-200
 		prose-code:text-run-400 prose-code:bg-bourbon-800/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-		prose-pre:bg-bourbon-950 prose-pre:border prose-pre:border-bourbon-800
+		prose-pre:bg-bourbon-900 prose-pre:border prose-pre:border-bourbon-800
+		[&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_pre_code]:rounded-none
 		prose-a:text-cmd-400 prose-a:no-underline hover:prose-a:text-cmd-300
 		prose-li:text-bourbon-300
 		prose-blockquote:border-l-run-500 prose-blockquote:text-bourbon-400`;

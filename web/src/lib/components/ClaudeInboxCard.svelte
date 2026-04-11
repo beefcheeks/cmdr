@@ -64,8 +64,8 @@
 		<div class="flex flex-col gap-1">
 			{#each $visibleTasksStore as task}
 				<button
-					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors cursor-pointer
-						{task.type === 'ask' || task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'implementing' || task.status === 'draft' ? 'hover:bg-bourbon-800/50' : ''}"
+					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors
+						{task.type === 'ask' || task.status === 'draft' || (task.status === 'resolved' && task.prUrl) || (task.status === 'completed' && (task.type === 'review' || task.intent === 'new-feature')) ? 'hover:bg-bourbon-800/50 cursor-pointer' : ''}"
 					onclick={() => {
 						if (task.type === 'ask') {
 							onask(task.id);
@@ -73,11 +73,11 @@
 							ondraft(task.id, task.repoPath);
 						} else if (task.status === 'resolved' && task.prUrl) {
 							window.open(task.prUrl, '_blank');
-						} else if (task.status === 'completed' || task.status === 'resolved' || task.status === 'refactoring' || task.status === 'implementing') {
+						} else if (task.status === 'completed' && (task.type === 'review' || task.intent === 'new-feature')) {
 							viewResult(task);
 						}
 					}}
-					disabled={task.type !== 'ask' && task.status !== 'completed' && task.status !== 'resolved' && task.status !== 'refactoring' && task.status !== 'implementing' && task.status !== 'draft'}
+					disabled={task.type !== 'ask' && task.status !== 'draft' && !(task.status === 'resolved' && task.prUrl) && !(task.status === 'completed' && (task.type === 'review' || task.intent === 'new-feature'))}
 				>
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">

@@ -327,6 +327,7 @@ export interface ClaudeTask {
 	commitSha: string;
 	title?: string;
 	prUrl?: string;
+	intent?: string;
 	errorMsg?: string;
 	createdAt: string;
 	startedAt: string | null;
@@ -379,6 +380,14 @@ export function updateClaudeTaskResult(id: number, result: string): Promise<{ st
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ id, result })
+	});
+}
+
+export function startImplementation(taskId: number, commitADR: boolean): Promise<{ target: string; session: string; window: string }> {
+	return request('/design/implement', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ taskId, commitADR })
 	});
 }
 

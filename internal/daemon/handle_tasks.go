@@ -43,23 +43,23 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 			CreatedAt   string  `json:"createdAt"`
 			StartedAt   *string `json:"startedAt"`
 			CompletedAt *string `json:"completedAt"`
+			Intent      string  `json:"intent,omitempty"`
 			prompt      string
-			intent      string
 		}
 
 		var taskList []task
 		for rows.Next() {
 			var t task
 			if err := rows.Scan(&t.ID, &t.Type, &t.Status, &t.RepoPath, &t.CommitSHA, &t.Title, &t.PRUrl,
-				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.prompt, &t.intent); err != nil {
+				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.prompt, &t.Intent); err != nil {
 				continue
 			}
 			// Derive title if not set
 			if t.Title == "" && t.prompt != "" {
 				t.Title = directiveTitle(t.prompt)
-				if t.intent != "" {
+				if t.Intent != "" {
 					for _, intent := range prompts.ListIntents() {
-						if intent.ID == t.intent {
+						if intent.ID == t.Intent {
 							t.Title = strings.ToLower(intent.Name) + ": " + t.Title
 							break
 						}
@@ -419,6 +419,72 @@ func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		})
 		if err != nil {
 			log.Printf("cmdr: refactor launch failed: %v", err)
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"target": res.Target, "session": res.Session, "window": res.Window})
+	}
+}
+
+// --- Launch implementation from design ADR ---
+
+func handleStartImplementation(db *sql.DB, bus *EventBus) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var body struct {
+			TaskID    int  `json:"taskId"`
+			CommitADR bool `json:"commitADR"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TaskID == 0 {
+			http.Error(w, `{"error":"missing taskId"}`, http.StatusBadRequest)
+			return
+		}
+
+		var adrContent, repoPath string
+		err := db.QueryRow(`SELECT result, repo_path FROM claude_tasks WHERE id = ?`, body.TaskID).
+			Scan(&adrContent, &repoPath)
+		if err != nil {
+			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
+			return
+		}
+
+		// Build the prompt with the ADR and commit instructions
+		var prompt string
+		if body.CommitADR {
+			prompt = fmt.Sprintf(
+				"## Approved ADR\n\n"+
+					"The following ADR has been approved. Commit it to `docs/` (follow the existing `ADR-NNNN-name.md` naming convention) as your first action before implementing.\n\n"+
+					"```markdown\n%s\n```\n\n"+
+					"## Instructions\n\nImplement the feature described in this ADR.",
+				adrContent,
+			)
+		} else {
+			prompt = fmt.Sprintf(
+				"## Approved ADR\n\n"+
+					"The following ADR has been approved for implementation. Do NOT commit the ADR itself to the repo — it is for context only.\n\n"+
+					"%s\n\n"+
+					"## Instructions\n\nImplement the feature described in this ADR.",
+				adrContent,
+			)
+		}
+
+		res, err := launchTask(db, bus, TaskLaunchConfig{
+			TaskID:         body.TaskID,
+			Intent:         "new-feature",
+			RepoPath:       repoPath,
+			UserPrompt:     prompt,
+			WindowPrefix:   "task",
+			WorktreePrefix: "directive",
+			RunningStatus:  "implementing",
+		})
+		if err != nil {
+			log.Printf("cmdr: implementation launch failed: %v", err)
 			http.Error(w, jsonErr(err), http.StatusInternalServerError)
 			return
 		}
