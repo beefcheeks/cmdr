@@ -63,9 +63,9 @@
 </script>
 
 {#if unpushed}
-	<div class="flex items-center gap-3">
-		<span class="text-[10px] font-mono text-red-400 flex items-center gap-1">
-			<TriangleAlert size={12} />
+	<div class="flex items-center gap-4">
+		<span class="text-[10px] font-mono text-red-400 flex items-center gap-1.5">
+			<TriangleAlert size={12} class="text-red-500/50" />
 			{unpushed} unpushed commit{unpushed !== 1 ? 's' : ''}
 		</span>
 		<button
