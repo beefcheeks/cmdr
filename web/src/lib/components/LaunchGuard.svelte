@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { GitBranch } from 'lucide-svelte';
+	import { GitBranch, TriangleAlert } from 'lucide-svelte';
 	import { pushRepo } from '$lib/api';
 	import type { Snippet } from 'svelte';
 
@@ -39,7 +39,6 @@
 		launching = true;
 		unpushed = null;
 
-		// Pre-flight check
 		if (await checkUnpushed()) {
 			launching = false;
 			return;
@@ -63,24 +62,22 @@
 	}
 </script>
 
-<div class="flex items-center gap-3">
-	{#if unpushed}
-		<div class="flex items-center gap-2">
-			<span class="text-[10px] font-mono text-red-400">
-				{unpushed} unpushed commit{unpushed !== 1 ? 's' : ''}
-			</span>
-			{#if repoPath}
-				<button
-					onclick={handlePush}
-					disabled={pushing}
-					class="flex items-center gap-1 text-[10px] font-mono text-run-400 hover:text-run-300 transition-colors cursor-pointer disabled:opacity-50"
-				>
-					<GitBranch size={10} />
-					{pushing ? 'pushing...' : 'push'}
-				</button>
-			{/if}
-		</div>
-	{/if}
+{#if unpushed}
+	<div class="flex items-center gap-3">
+		<span class="text-[10px] font-mono text-red-400 flex items-center gap-1">
+			<TriangleAlert size={12} />
+			{unpushed} unpushed commit{unpushed !== 1 ? 's' : ''}
+		</span>
+		<button
+			onclick={handlePush}
+			disabled={pushing}
+			class="flex items-center gap-1.5 text-[10px] font-mono text-run-400 hover:text-run-300 transition-colors cursor-pointer disabled:opacity-50"
+		>
+			<GitBranch size={14} />
+			{pushing ? 'pushing...' : 'Push'}
+		</button>
+	</div>
+{:else}
 	<button
 		onclick={handleLaunch}
 		disabled={launching || disabled}
@@ -88,4 +85,4 @@
 	>
 		{@render children()}
 	</button>
-</div>
+{/if}
