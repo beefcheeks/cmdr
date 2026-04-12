@@ -9,7 +9,7 @@ import (
 
 // SyncAllRepos fetches new commits for all monitored repos.
 func SyncAllRepos(db *sql.DB, bus *EventBus) {
-	rows, err := db.Query(`SELECT id, path, default_branch FROM repos`)
+	rows, err := db.Query(`SELECT id, path, default_branch FROM repos WHERE monitor = 1`)
 	if err != nil {
 		log.Printf("cmdr: sync: query repos: %v", err)
 		return

@@ -33,7 +33,7 @@ func gitAuthor() string {
 func handleListRepos(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		rows, err := db.Query(`
-			SELECT id, name, path, remote_url, default_branch, last_synced_at, created_at
+			SELECT id, name, path, remote_url, default_branch, last_synced_at, created_at, squad, squad_alias, monitor
 			FROM repos ORDER BY name
 		`)
 		if err != nil {
@@ -50,12 +50,15 @@ func handleListRepos(db *sql.DB) http.HandlerFunc {
 			DefaultBranch string  `json:"defaultBranch"`
 			LastSyncedAt  *string `json:"lastSyncedAt"`
 			CreatedAt     string  `json:"createdAt"`
+			Squad         string  `json:"squad"`
+			SquadAlias    string  `json:"squadAlias"`
+			Monitor       bool    `json:"monitor"`
 		}
 
 		var repos []repo
 		for rows.Next() {
 			var r repo
-			if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.RemoteURL, &r.DefaultBranch, &r.LastSyncedAt, &r.CreatedAt); err != nil {
+			if err := rows.Scan(&r.ID, &r.Name, &r.Path, &r.RemoteURL, &r.DefaultBranch, &r.LastSyncedAt, &r.CreatedAt, &r.Squad, &r.SquadAlias, &r.Monitor); err != nil {
 				continue
 			}
 			repos = append(repos, r)
@@ -214,7 +217,8 @@ func handleListCommits(db *sql.DB) http.HandlerFunc {
 			       (SELECT COUNT(*) FROM review_comments rc WHERE rc.repo_path = r.path AND rc.sha = c.sha) as review_count
 			FROM commits c
 			JOIN repos r ON r.id = c.repo_id
-			WHERE c.id IN (
+			WHERE r.monitor = 1
+			AND c.id IN (
 				SELECT c2.id FROM commits c2
 				WHERE c2.repo_id = c.repo_id
 				ORDER BY c2.committed_at DESC

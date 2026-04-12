@@ -125,6 +125,9 @@ export interface MonitoredRepo {
 	defaultBranch: string;
 	lastSyncedAt: string | null;
 	createdAt: string;
+	squad: string;
+	squadAlias: string;
+	monitor: boolean;
 }
 
 export interface DiscoveredRepo {
@@ -217,6 +220,57 @@ export function syncRepos(): Promise<{ status: string }> {
 	return request('/repos/sync', { method: 'POST' });
 }
 
+export function assignRepoSquad(repoId: number, squad: string, alias: string): Promise<{ status: string }> {
+	return request('/repos/squad', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ repoId, squad, alias })
+	});
+}
+
+export function updateRepoMonitor(repoId: number, monitor: boolean): Promise<{ status: string }> {
+	return request('/repos/monitor', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ repoId, monitor })
+	});
+}
+
+// Squads
+
+export interface Squad {
+	name: string;
+	createdAt: string;
+	repos: SquadMember[];
+}
+
+export interface SquadMember {
+	id: number;
+	name: string;
+	path: string;
+	alias: string;
+}
+
+export function getSquads(): Promise<Squad[]> {
+	return request('/squads');
+}
+
+export function createSquad(name: string): Promise<{ name: string }> {
+	return request('/squads/create', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name })
+	});
+}
+
+export function deleteSquad(name: string): Promise<{ deleted: string }> {
+	return request('/squads/delete', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ name })
+	});
+}
+
 // Analytics
 
 export interface ActivityBucket {
@@ -294,7 +348,7 @@ export function getReviewComments(repoPath: string, sha: string): Promise<Review
 }
 
 export function saveReviewComment(body: { repoPath: string; sha: string; lineStart: number; lineEnd: number; comment: string }): Promise<{ id: number }> {
-	return request('/review/comments', {
+	return request('/review/comments/save', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(body)

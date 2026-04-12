@@ -191,37 +191,74 @@ func Status() error {
 }
 
 func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, database *sql.DB) {
+	// CLI IPC (no /api prefix)
 	mux.HandleFunc("/status", handleStatus(s))
 	mux.HandleFunc("/run", handleRun(s))
 
-	// /api prefix for web UI
+	// Core
 	mux.HandleFunc("/api/status", handleStatus(s))
 	mux.HandleFunc("/api/tasks", handleTasks(s))
 	mux.HandleFunc("/api/run", handleRun(s))
+	mux.HandleFunc("/api/events", handleEvents(bus))
+
+	// Tmux
 	mux.HandleFunc("/api/tmux/sessions", handleTmuxSessions())
 	mux.HandleFunc("/api/tmux/sessions/create", handleTmuxCreateSession())
 	mux.HandleFunc("/api/tmux/sessions/switch", handleTmuxSwitch())
 	mux.HandleFunc("/api/tmux/sessions/focus", handleTmuxFocus())
 	mux.HandleFunc("/api/tmux/sessions/kill", handleTmuxKill())
+
+	// System utilities
 	mux.HandleFunc("/api/open", handleOpenFolder())
 	mux.HandleFunc("/api/editor/open", handleEditorOpen())
-	mux.HandleFunc("/api/claude/sessions", handleClaudeSessions())
-	mux.HandleFunc("/api/events", handleEvents(bus))
 
-	// Git monitoring
+	// Repos + commits
 	mux.HandleFunc("/api/repos", handleListRepos(database))
 	mux.HandleFunc("/api/repos/discover", handleDiscoverRepos(database))
 	mux.HandleFunc("/api/repos/add", handleAddRepo(database))
 	mux.HandleFunc("/api/repos/remove", handleRemoveRepo(database))
+	mux.HandleFunc("/api/repos/sync", handleSyncRepos(database, bus))
+	mux.HandleFunc("/api/repos/pull", handleRepoPull(bus))
+	mux.HandleFunc("/api/repos/push", handleRepoPush())
+	mux.HandleFunc("/api/repos/unpushed", handleUnpushedCheck())
+	mux.HandleFunc("/api/repos/squad", handleAssignRepoSquad(database))
+	mux.HandleFunc("/api/repos/monitor", handleUpdateRepoMonitor(database, bus))
 	mux.HandleFunc("/api/commits", handleListCommits(database))
 	mux.HandleFunc("/api/commits/diff", handleCommitDiff(database))
 	mux.HandleFunc("/api/commits/files", handleCommitFiles(database))
 	mux.HandleFunc("/api/commits/seen", handleMarkSeen(database))
 	mux.HandleFunc("/api/commits/flag", handleToggleFlag(database))
-	mux.HandleFunc("/api/repos/sync", handleSyncRepos(database, bus))
-	mux.HandleFunc("/api/repos/pull", handleRepoPull(bus))
-	mux.HandleFunc("/api/repos/push", handleRepoPush())
-	mux.HandleFunc("/api/repos/unpushed", handleUnpushedCheck())
+
+	// Squads
+	mux.HandleFunc("/api/squads", handleListSquads(database))
+	mux.HandleFunc("/api/squads/create", handleCreateSquad(database))
+	mux.HandleFunc("/api/squads/delete", handleDeleteSquad(database))
+
+	// Review
+	mux.HandleFunc("/api/review/comments", handleListReviewComments(database))
+	mux.HandleFunc("/api/review/comments/save", handleSaveReviewComment(database, bus))
+	mux.HandleFunc("/api/review/comments/delete", handleDeleteReviewComment(database, bus))
+	mux.HandleFunc("/api/review/submit", handleSubmitReview(database, bus))
+	mux.HandleFunc("/api/review/refactor", handleStartRefactor(database, bus))
+
+	// Claude tasks
+	mux.HandleFunc("/api/claude/sessions", handleClaudeSessions())
+	mux.HandleFunc("/api/claude/tasks", handleListClaudeTasks(database))
+	mux.HandleFunc("/api/claude/tasks/result", handleGetClaudeTaskResult(database))
+	mux.HandleFunc("/api/claude/tasks/update", handleUpdateClaudeTaskResult(database, bus))
+	mux.HandleFunc("/api/claude/tasks/dismiss", handleDismissClaudeTask(database, bus))
+	mux.HandleFunc("/api/claude/tasks/resolve", handleResolveTask(database, bus))
+
+	// Directives
+	mux.HandleFunc("/api/directives/create", handleCreateDirective(database, bus))
+	mux.HandleFunc("/api/directives/save", handleSaveDirective(database, bus))
+	mux.HandleFunc("/api/directives/submit", handleSubmitDirective(database, bus))
+	mux.HandleFunc("/api/directives/intents", handleListIntents())
+	mux.HandleFunc("/api/design/implement", handleStartImplementation(database, bus))
+
+	// Ask
+	mux.HandleFunc("/api/ask", handleAsk(database, bus))
+	mux.HandleFunc("/api/ask/continue", handleContinueAsk(database))
 
 	// Analytics
 	mux.HandleFunc("/api/analytics/activity", handleActivityAnalytics(database))
@@ -230,39 +267,7 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/brew/outdated", handleBrewOutdated())
 	mux.HandleFunc("/api/brew/upgrade", handleBrewUpgrade(bus))
 
-	// Review
-	mux.HandleFunc("/api/review/comments", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			handleSaveReviewComment(database, bus)(w, r)
-		} else {
-			handleListReviewComments(database)(w, r)
-		}
-	})
-	mux.HandleFunc("/api/review/comments/delete", handleDeleteReviewComment(database, bus))
-	mux.HandleFunc("/api/review/submit", handleSubmitReview(database, bus))
-
-	// Claude tasks
-	mux.HandleFunc("/api/claude/tasks", handleListClaudeTasks(database))
-	mux.HandleFunc("/api/claude/tasks/result", handleGetClaudeTaskResult(database))
-	mux.HandleFunc("/api/claude/tasks/update", handleUpdateClaudeTaskResult(database, bus))
-	mux.HandleFunc("/api/claude/tasks/dismiss", handleDismissClaudeTask(database, bus))
-
-	// Refactor + Implementation
-	mux.HandleFunc("/api/review/refactor", handleStartRefactor(database, bus))
-	mux.HandleFunc("/api/design/implement", handleStartImplementation(database, bus))
-	mux.HandleFunc("/api/claude/tasks/resolve", handleResolveTask(database, bus))
-
-	// Ask (headless vault Q&A)
-	mux.HandleFunc("/api/ask", handleAsk(database, bus))
-	mux.HandleFunc("/api/ask/continue", handleContinueAsk(database))
-
-	// Directives (draft → submit via claude_tasks)
-	mux.HandleFunc("/api/directives/create", handleCreateDirective(database, bus))
-	mux.HandleFunc("/api/directives/save", handleSaveDirective(database, bus))
-	mux.HandleFunc("/api/directives/submit", handleSubmitDirective(database, bus))
-	mux.HandleFunc("/api/directives/intents", handleListIntents())
-
-	// Code + Images (for directive composer)
+	// Code + Images (directive composer)
 	mux.HandleFunc("/api/code/files", handleCodeFiles())
 	mux.HandleFunc("/api/code/snippet", handleCodeSnippet())
 	mux.HandleFunc("/api/images/upload", handleImageUpload())

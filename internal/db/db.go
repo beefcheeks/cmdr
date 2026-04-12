@@ -168,5 +168,31 @@ func migrate(d *sql.DB) error {
 	// Clean up unused drafts table if it exists
 	d.Exec(`DROP TABLE IF EXISTS drafts`)
 
+	// Squads: persistent repo groupings for inter-Claude delegation
+	d.Exec(`CREATE TABLE IF NOT EXISTS squads (
+		name       TEXT PRIMARY KEY,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// Add squad columns to repos if missing
+	var hasSquad bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name='squad'`).Scan(&hasSquad)
+	if !hasSquad {
+		d.Exec(`ALTER TABLE repos ADD COLUMN squad TEXT NOT NULL DEFAULT ''`)
+	}
+
+	var hasSquadAlias bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name='squad_alias'`).Scan(&hasSquadAlias)
+	if !hasSquadAlias {
+		d.Exec(`ALTER TABLE repos ADD COLUMN squad_alias TEXT NOT NULL DEFAULT ''`)
+	}
+
+	// Add monitor flag to repos (default 1 = commit syncing enabled)
+	var hasMonitor bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name='monitor'`).Scan(&hasMonitor)
+	if !hasMonitor {
+		d.Exec(`ALTER TABLE repos ADD COLUMN monitor INTEGER NOT NULL DEFAULT 1`)
+	}
+
 	return nil
 }

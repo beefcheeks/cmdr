@@ -50,6 +50,7 @@ install: build
 	@rm -f cmdr
 	@rsync -a --delete build/cmdr.app/ "$(APP_DIR)/cmdr.app/"
 	@echo "cmdr: installed app to $(APP_DIR)/cmdr.app"
+	@$(BIN_DIR)/cmdr init
 	@echo "cmdr: service installed and started ✓"
 
 # Stop and remove service
