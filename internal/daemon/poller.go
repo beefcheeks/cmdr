@@ -232,6 +232,9 @@ func findAncestorPane(pid int, ppidMap map[int]int, shellPIDs map[int]*claudePan
 
 // taskWindowName returns the tmux window name for a task based on its type.
 func taskWindowName(taskType, status string, taskID int) string {
+	if taskType == "delegation" {
+		return fmt.Sprintf("enlist-%d", taskID)
+	}
 	if taskType == "directive" && status == "implementing" {
 		return fmt.Sprintf("impl-%d", taskID)
 	}

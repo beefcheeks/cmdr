@@ -292,20 +292,28 @@ type TaskLaunchResult struct {
 // launchTask launches a Claude session in tmux based on the given config.
 func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResult, error) {
 	windowName := fmt.Sprintf("%s-%d", cfg.WindowPrefix, cfg.TaskID)
-	worktreeName := fmt.Sprintf("%s-%d", cfg.WorktreePrefix, cfg.TaskID)
 
 	// Write optional marker file
-	if cfg.MarkerDir != "" {
-		os.MkdirAll(cfg.MarkerDir, 0o700)
-		os.WriteFile(filepath.Join(cfg.MarkerDir, worktreeName), []byte(strconv.Itoa(cfg.TaskID)), 0o644)
+	var worktreeName string
+	if cfg.WorktreePrefix != "" {
+		worktreeName = fmt.Sprintf("%s-%d", cfg.WorktreePrefix, cfg.TaskID)
+		if cfg.MarkerDir != "" {
+			os.MkdirAll(cfg.MarkerDir, 0o700)
+			os.WriteFile(filepath.Join(cfg.MarkerDir, worktreeName), []byte(strconv.Itoa(cfg.TaskID)), 0o644)
+		}
 	}
 
 	// Resolve image references to absolute paths Claude can read
 	prompt := resolveImageRefs(cfg.UserPrompt)
 
-	// Build claude command
+	// Build claude command — omit -w when no worktree prefix (e.g. delegations)
 	escaped := strings.ReplaceAll(prompt, "'", "'\\''")
-	baseCmd := fmt.Sprintf("claude -w %s --name 'cmdr-task-%d'", worktreeName, cfg.TaskID)
+	var baseCmd string
+	if cfg.WorktreePrefix != "" {
+		baseCmd = fmt.Sprintf("claude -w %s --name 'cmdr-task-%d'", worktreeName, cfg.TaskID)
+	} else {
+		baseCmd = fmt.Sprintf("claude --name 'cmdr-task-%d'", cfg.TaskID)
+	}
 	var cmd string
 	if cfg.Intent != "" {
 		// For design-phase intents (e.g. new-feature), use the design prompt
@@ -633,6 +641,10 @@ func resolveImageRefs(content string) string {
 
 // taskWorktreeInfo returns the worktree name and marker path for a task based on its type.
 func taskWorktreeInfo(taskType, status string, taskID int) (worktreeName string, markerPath string) {
+	// Delegations don't use worktrees
+	if taskType == "delegation" {
+		return
+	}
 	if taskType == "directive" && status == "implementing" {
 		worktreeName = fmt.Sprintf("impl-%d", taskID)
 		return

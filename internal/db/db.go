@@ -194,5 +194,30 @@ func migrate(d *sql.DB) error {
 		d.Exec(`ALTER TABLE repos ADD COLUMN monitor INTEGER NOT NULL DEFAULT 1`)
 	}
 
+	// Delegation columns on claude_tasks
+	var hasTaskSquad bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='squad'`).Scan(&hasTaskSquad)
+	if !hasTaskSquad {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN squad TEXT NOT NULL DEFAULT ''`)
+	}
+
+	var hasDelegationFrom bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='delegation_from'`).Scan(&hasDelegationFrom)
+	if !hasDelegationFrom {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN delegation_from TEXT NOT NULL DEFAULT ''`)
+	}
+
+	var hasDelegationTo bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='delegation_to'`).Scan(&hasDelegationTo)
+	if !hasDelegationTo {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN delegation_to TEXT NOT NULL DEFAULT ''`)
+	}
+
+	var hasNotified bool
+	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='notified'`).Scan(&hasNotified)
+	if !hasNotified {
+		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN notified INTEGER NOT NULL DEFAULT 0`)
+	}
+
 	return nil
 }

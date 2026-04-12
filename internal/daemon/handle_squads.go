@@ -199,3 +199,52 @@ func handleUpdateRepoMonitor(db *sql.DB, bus *EventBus) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	}
 }
+
+func handleListDelegations(db *sql.DB) http.HandlerFunc {
+	type delegation struct {
+		ID             int    `json:"id"`
+		Status         string `json:"status"`
+		Squad          string `json:"squad"`
+		DelegationFrom string `json:"delegationFrom"`
+		DelegationTo   string `json:"delegationTo"`
+		Title          string `json:"title"`
+		RepoPath       string `json:"repoPath"`
+		CreatedAt      string `json:"createdAt"`
+		CompletedAt    string `json:"completedAt,omitempty"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		squadFilter := r.URL.Query().Get("squad")
+
+		query := `SELECT id, status, squad, delegation_from, delegation_to, COALESCE(title, ''), repo_path, created_at, COALESCE(completed_at, '')
+			FROM claude_tasks WHERE type = 'delegation'`
+		var args []any
+		if squadFilter != "" {
+			query += ` AND squad = ?`
+			args = append(args, squadFilter)
+		}
+		query += ` ORDER BY created_at DESC`
+
+		rows, err := db.Query(query, args...)
+		if err != nil {
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var delegations []delegation
+		for rows.Next() {
+			var d delegation
+			if err := rows.Scan(&d.ID, &d.Status, &d.Squad, &d.DelegationFrom, &d.DelegationTo, &d.Title, &d.RepoPath, &d.CreatedAt, &d.CompletedAt); err != nil {
+				continue
+			}
+			delegations = append(delegations, d)
+		}
+		if delegations == nil {
+			delegations = []delegation{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(delegations)
+	}
+}

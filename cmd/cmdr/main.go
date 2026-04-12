@@ -6,12 +6,15 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	cmdr "github.com/mikehu/cmdr"
 	"github.com/mikehu/cmdr/internal/daemon"
 	"github.com/mikehu/cmdr/internal/db"
+	"github.com/mikehu/cmdr/internal/prompts"
 	"github.com/mikehu/cmdr/internal/scheduler"
 	"github.com/spf13/cobra"
 )
@@ -38,6 +41,8 @@ func main() {
 	root.AddCommand(listCmd())
 	root.AddCommand(contextCmd())
 	root.AddCommand(initCmd())
+	root.AddCommand(enlistCmd())
+	root.AddCommand(checkDelegationsCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -175,41 +180,53 @@ func printSquadContext(database *sql.DB, repoPath string) error {
 		}
 	}
 
-	type hookOutput struct {
-		HookSpecificOutput struct {
-			HookEventName     string `json:"hookEventName"`
-			AdditionalContext string `json:"additionalContext"`
-		} `json:"hookSpecificOutput"`
+	if squadName == "" {
+		return outputHook("SessionStart", "")
 	}
 
-	var out hookOutput
-	out.HookSpecificOutput.HookEventName = "SessionStart"
+	// Query other squad members
+	rows, err := database.Query(
+		`SELECT squad_alias, path FROM repos WHERE squad = ? AND path != ? ORDER BY squad_alias`,
+		squadName, repoPath,
+	)
+	if err != nil {
+		return outputHook("SessionStart", "")
+	}
+	defer rows.Close()
 
-	if squadName != "" {
-		// Query other squad members
-		rows, err := database.Query(
-			`SELECT squad_alias, path FROM repos WHERE squad = ? AND path != ? ORDER BY squad_alias`,
-			squadName, repoPath,
-		)
-		if err == nil {
-			defer rows.Close()
-			var members []string
-			for rows.Next() {
-				var mAlias, mPath string
-				rows.Scan(&mAlias, &mPath)
-				members = append(members, fmt.Sprintf("%s (%s)", mAlias, mPath))
-			}
+	var members []string
+	for rows.Next() {
+		var mAlias, mPath string
+		rows.Scan(&mAlias, &mPath)
+		members = append(members, fmt.Sprintf("%s (%s)", mAlias, mPath))
+	}
 
-			ctx := fmt.Sprintf("You are in squad '%s' as '%s'.", squadName, alias)
-			if len(members) > 0 {
-				ctx += fmt.Sprintf(" Squad members: %s.", strings.Join(members, ", "))
+	ctx := fmt.Sprintf("You are in squad '%s' as '%s'.", squadName, alias)
+	if len(members) > 0 {
+		ctx += fmt.Sprintf(" Squad members: %s.", strings.Join(members, ", "))
+	}
+	ctx += " Use /enlist to request work from squad members."
+
+	// Append active delegation status
+	dRows, err := database.Query(
+		`SELECT delegation_to, COALESCE(title, ''), status FROM claude_tasks
+		 WHERE type = 'delegation' AND squad = ? AND delegation_from = ? AND status IN ('running', 'completed')`,
+		squadName, alias,
+	)
+	if err == nil {
+		defer dRows.Close()
+		for dRows.Next() {
+			var dTo, dTitle, dStatus string
+			dRows.Scan(&dTo, &dTitle, &dStatus)
+			if dStatus == "running" {
+				ctx += fmt.Sprintf(" Active enlistment: %s is working on '%s'.", dTo, dTitle)
+			} else {
+				ctx += fmt.Sprintf(" Enlistment to %s completed: '%s'.", dTo, dTitle)
 			}
-			ctx += " Use /enlist to request work from squad members."
-			out.HookSpecificOutput.AdditionalContext = ctx
 		}
 	}
 
-	return json.NewEncoder(os.Stdout).Encode(out)
+	return outputHook("SessionStart", ctx)
 }
 
 func initCmd() *cobra.Command {
@@ -234,10 +251,10 @@ func initCmd() *cobra.Command {
 
 			// Merge SessionStart hook into settings.local.json
 			settingsPath := filepath.Join(home, ".claude", "settings.local.json")
-			if err := mergeSessionStartHook(settingsPath); err != nil {
-				return fmt.Errorf("merging hook: %w", err)
+			if err := mergeHooks(settingsPath); err != nil {
+				return fmt.Errorf("merging hooks: %w", err)
 			}
-			fmt.Printf("cmdr: configured SessionStart hook in %s\n", settingsPath)
+			fmt.Printf("cmdr: configured hooks in %s\n", settingsPath)
 
 			return nil
 		},
@@ -258,36 +275,27 @@ When your current task requires changes in another repository that is part of yo
 
 ## How to enlist
 
-Write a request file so cmdr can dispatch work to the target repo:
+Run the cmdr CLI to dispatch work to a squad member:
 
-1. Create the directory if needed: ` + "`mkdir -p ~/.cmdr/squads/{squad-name}/requests`" + `
-2. Write the request as JSON:
-
-` + "```json" + `
-{
-  "from": "{your-squad-alias}",
-  "to": "{target-squad-alias}",
-  "summary": "Brief description of what you need",
-  "details": "Full specification — be precise about interfaces, types, behavior",
-  "intent": "bug-fix|refactor|new-feature"
-}
+` + "```bash" + `
+cmdr enlist --squad {squad-name} --from {your-alias} --to {target-alias} \
+  --summary "Brief description of what you need" \
+  --details "Full specification — be precise about interfaces, types, behavior"
 ` + "```" + `
 
-Save to: ` + "`~/.cmdr/squads/{squad-name}/requests/{your-alias}-{timestamp}.json`" + `
+Cmdr will validate the squad, create a branch, and launch a Claude session in the target repo.
 
-3. Continue working on parts of your task that don't depend on the enlisted work.
-4. Cmdr will pick up the request, launch a Claude session in the target repo, and notify you when complete.
-
-## Checking results
-
-Reports from completed enlistments appear in ` + "`~/.cmdr/squads/{squad-name}/reports/`" + `.
-Your SessionStart context will also notify you of completed enlistments.
+After dispatching, continue working on parts of your task that don't depend on the enlisted work. You will be automatically notified when the enlistment is complete.
 `
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
-func mergeSessionStartHook(path string) error {
-	hookCmd := `cmdr context --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`
+func mergeHooks(path string) error {
+	// Hooks cmdr needs installed
+	cmdrHooks := map[string]string{
+		"SessionStart":     `cmdr context --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`,
+		"UserPromptSubmit": `cmdr check-delegations --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`,
+	}
 
 	// Read existing settings if present
 	var settings map[string]any
@@ -299,33 +307,267 @@ func mergeSessionStartHook(path string) error {
 		settings = make(map[string]any)
 	}
 
-	// Ensure hooks.SessionStart array exists and contains our hook
 	hooks, _ := settings["hooks"].(map[string]any)
 	if hooks == nil {
 		hooks = make(map[string]any)
 	}
 
-	sessionStart, _ := hooks["SessionStart"].([]any)
+	changed := false
+	for event, hookCmd := range cmdrHooks {
+		hookList, _ := hooks[event].([]any)
 
-	// Check if our hook already exists
-	for _, h := range sessionStart {
-		if hMap, ok := h.(map[string]any); ok {
-			if cmd, _ := hMap["command"].(string); cmd == hookCmd {
-				return nil // already configured
+		// Check if our hook already exists
+		found := false
+		for _, h := range hookList {
+			if hMap, ok := h.(map[string]any); ok {
+				if cmd, _ := hMap["command"].(string); cmd == hookCmd {
+					found = true
+					break
+				}
 			}
+		}
+		if !found {
+			hookList = append(hookList, map[string]any{
+				"type":    "command",
+				"command": hookCmd,
+			})
+			hooks[event] = hookList
+			changed = true
 		}
 	}
 
-	sessionStart = append(sessionStart, map[string]any{
-		"type":    "command",
-		"command": hookCmd,
-	})
-	hooks["SessionStart"] = sessionStart
-	settings["hooks"] = hooks
+	if !changed {
+		return nil
+	}
 
+	settings["hooks"] = hooks
 	out, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, append(out, '\n'), 0o644)
+}
+
+func enlistCmd() *cobra.Command {
+	var squad, from, to, summary, details string
+	cmd := &cobra.Command{
+		Use:   "enlist",
+		Short: "Enlist a squad member for cross-repo work",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if squad == "" || from == "" || to == "" || summary == "" {
+				return fmt.Errorf("--squad, --from, --to, and --summary are required")
+			}
+
+			database, err := db.Open()
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+
+			// Validate squad exists
+			var squadExists bool
+			database.QueryRow(`SELECT COUNT(*) FROM squads WHERE name = ?`, squad).Scan(&squadExists)
+			if !squadExists {
+				return fmt.Errorf("squad %q does not exist", squad)
+			}
+
+			// Resolve target alias to repo path
+			var targetPath string
+			err = database.QueryRow(`SELECT path FROM repos WHERE squad = ? AND squad_alias = ?`, squad, to).Scan(&targetPath)
+			if err != nil {
+				return fmt.Errorf("squad member %q not found in squad %q", to, squad)
+			}
+
+			// Check no running delegation already targets this repo
+			var running int
+			database.QueryRow(`SELECT COUNT(*) FROM claude_tasks WHERE type = 'delegation' AND repo_path = ? AND status = 'running'`, targetPath).Scan(&running)
+			if running > 0 {
+				return fmt.Errorf("%s already has an active delegation — wait for it to complete", to)
+			}
+
+			// Create task row
+			prompt := fmt.Sprintf("## Enlistment from %s\n\n**Summary:** %s\n\n%s", from, summary, details)
+			now := time.Now().Format(time.RFC3339)
+			result, err := database.Exec(
+				`INSERT INTO claude_tasks (type, status, repo_path, prompt, intent, squad, delegation_from, delegation_to, created_at, started_at)
+				 VALUES ('delegation', 'running', ?, ?, 'delegation', ?, ?, ?, ?, ?)`,
+				targetPath, prompt, squad, from, to, now, now,
+			)
+			if err != nil {
+				return fmt.Errorf("creating task: %w", err)
+			}
+			taskID64, _ := result.LastInsertId()
+			taskID := int(taskID64)
+
+			// Create branch
+			branchName := fmt.Sprintf("squad/%s/%d", squad, taskID)
+			if out, err := exec.Command("git", "-C", targetPath, "checkout", "-b", branchName).CombinedOutput(); err != nil {
+				// Clean up task on failure
+				database.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
+				return fmt.Errorf("creating branch: %s", strings.TrimSpace(string(out)))
+			}
+
+			// Build claude command with delegation system prompt
+			escapedPrompt := strings.ReplaceAll(prompt, "'", "'\\''")
+			claudeCmd := fmt.Sprintf("claude --name 'cmdr-task-%d'", taskID)
+
+			if systemPrompt, err := prompts.GetIntentPrompt("delegation"); err == nil {
+				escapedSystem := strings.ReplaceAll(systemPrompt, "'", "'\\''")
+				claudeCmd = fmt.Sprintf("%s --append-system-prompt '%s' '%s'", claudeCmd, escapedSystem, escapedPrompt)
+			} else {
+				claudeCmd = fmt.Sprintf("%s '%s'", claudeCmd, escapedPrompt)
+			}
+
+			// Find or create tmux session for target repo
+			windowName := fmt.Sprintf("enlist-%d", taskID)
+			tmuxArgs := []string{"new-window", "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd}
+
+			// Try to find existing session for this repo
+			sessionName := findSessionForRepo(targetPath)
+			if sessionName != "" {
+				tmuxArgs = append([]string{"new-window", "-t", sessionName, "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd}, []string{}...)
+				tmuxArgs = []string{"new-window", "-t", sessionName, "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd}
+			} else {
+				// Create a new session
+				out, err := exec.Command("tmux", "new-session", "-ds", to, "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd).CombinedOutput()
+				if err != nil {
+					database.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
+					return fmt.Errorf("tmux new-session: %s", strings.TrimSpace(string(out)))
+				}
+				fmt.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)\n", taskID, squad, from, to)
+				fmt.Printf("cmdr: branch %s, session %s:%s\n", branchName, to, windowName)
+				return nil
+			}
+
+			if out, err := exec.Command("tmux", tmuxArgs...).CombinedOutput(); err != nil {
+				database.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
+				return fmt.Errorf("tmux new-window: %s", strings.TrimSpace(string(out)))
+			}
+
+			fmt.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)\n", taskID, squad, from, to)
+			fmt.Printf("cmdr: branch %s, session %s:%s\n", branchName, sessionName, windowName)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&squad, "squad", "", "Squad name")
+	cmd.Flags().StringVar(&from, "from", "", "Requesting repo alias")
+	cmd.Flags().StringVar(&to, "to", "", "Target repo alias")
+	cmd.Flags().StringVar(&summary, "summary", "", "Brief description of what you need")
+	cmd.Flags().StringVar(&details, "details", "", "Full specification")
+	return cmd
+}
+
+// findSessionForRepo finds an existing tmux session that has a pane in the given directory.
+func findSessionForRepo(repoPath string) string {
+	out, err := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}\t#{pane_current_path}").Output()
+	if err != nil {
+		return ""
+	}
+	resolved := repoPath
+	if r, err := filepath.EvalSymlinks(repoPath); err == nil {
+		resolved = r
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 2 && (parts[1] == repoPath || parts[1] == resolved) {
+			return parts[0]
+		}
+	}
+	return ""
+}
+
+func checkDelegationsCmd() *cobra.Command {
+	var repoPath string
+	cmd := &cobra.Command{
+		Use:   "check-delegations",
+		Short: "Check for completed delegations (UserPromptSubmit hook)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if repoPath == "" {
+				var err error
+				repoPath, err = os.Getwd()
+				if err != nil {
+					return err
+				}
+			}
+			if resolved, err := filepath.EvalSymlinks(repoPath); err == nil {
+				repoPath = resolved
+			}
+			repoPath = filepath.Clean(repoPath)
+
+			database, err := db.Open()
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+
+			// Find this repo's squad alias
+			var squadName, alias string
+			database.QueryRow(`SELECT squad, squad_alias FROM repos WHERE path = ?`, repoPath).Scan(&squadName, &alias)
+			if squadName == "" {
+				// Not in a squad — nothing to check
+				return outputHook("UserPromptSubmit", "")
+			}
+
+			// Find completed delegations from this repo that haven't been notified
+			rows, err := database.Query(
+				`SELECT id, delegation_to, COALESCE(title, ''), COALESCE(result, '')
+				 FROM claude_tasks
+				 WHERE type = 'delegation' AND squad = ? AND delegation_from = ?
+				   AND status IN ('completed', 'done') AND notified = 0`,
+				squadName, alias,
+			)
+			if err != nil {
+				return outputHook("UserPromptSubmit", "")
+			}
+			defer rows.Close()
+
+			var notifications []string
+			var ids []int
+			for rows.Next() {
+				var id int
+				var toAlias, title, result string
+				rows.Scan(&id, &toAlias, &title, &result)
+				ids = append(ids, id)
+				msg := fmt.Sprintf("Enlistment complete: %s finished", toAlias)
+				if title != "" {
+					msg += fmt.Sprintf(" '%s'", title)
+				}
+				notifications = append(notifications, msg)
+			}
+
+			if len(ids) == 0 {
+				return outputHook("UserPromptSubmit", "")
+			}
+
+			// Mark as notified
+			placeholders := make([]string, len(ids))
+			notifyArgs := make([]any, len(ids))
+			for i, id := range ids {
+				placeholders[i] = "?"
+				notifyArgs[i] = id
+			}
+			database.Exec(
+				fmt.Sprintf(`UPDATE claude_tasks SET notified = 1 WHERE id IN (%s)`, strings.Join(placeholders, ",")),
+				notifyArgs...,
+			)
+
+			ctx := strings.Join(notifications, ". ")
+			return outputHook("UserPromptSubmit", ctx)
+		},
+	}
+	cmd.Flags().StringVar(&repoPath, "repo", "", "Repository path (defaults to cwd)")
+	return cmd
+}
+
+func outputHook(event, context string) error {
+	type hookOutput struct {
+		HookSpecificOutput struct {
+			HookEventName     string `json:"hookEventName"`
+			AdditionalContext string `json:"additionalContext"`
+		} `json:"hookSpecificOutput"`
+	}
+	var out hookOutput
+	out.HookSpecificOutput.HookEventName = event
+	out.HookSpecificOutput.AdditionalContext = context
+	return json.NewEncoder(os.Stdout).Encode(out)
 }
