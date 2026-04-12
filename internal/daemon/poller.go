@@ -287,13 +287,32 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 	for _, t := range tasks {
 		windowName := taskWindowName(t.taskType, t.status, t.id)
 		windowAlive := allWindows[windowName]
+		inDesignPhase := t.status == "running" && prompts.IntentHasDesignPhase(t.intent)
+
+		// Design-phase tasks: proactively capture ADR from worktree while
+		// window is still alive, so it's safe even if the user prunes the
+		// worktree on exit. We store the result but keep status as running.
+		if inDesignPhase && windowAlive {
+			var existingResult string
+			db.QueryRow(`SELECT COALESCE(result, '') FROM claude_tasks WHERE id=?`, t.id).Scan(&existingResult)
+			if existingResult == "" {
+				worktreeName := fmt.Sprintf("directive-%d", t.id)
+				if adr := scrapeADRFromWorktree(t.repoPath, worktreeName); adr != "" {
+					title := extractTitle(adr)
+					db.Exec(`UPDATE claude_tasks SET result=?, title=? WHERE id=?`, adr, title, t.id)
+					bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+						"id": t.id, "status": "running", "title": title,
+					}})
+					log.Printf("cmdr: task %d ADR captured proactively (window still open)", t.id)
+				}
+			}
+		}
 
 		// Scrape for PR URL if this task is expected to produce one:
 		// - refactoring/implementing statuses always produce PRs
 		// - running tasks check intent-level flag, but NOT during design phase
 		//   (design phase produces an ADR, not a PR — scraping would pick up
 		//   incidental PR URLs from the conversation)
-		inDesignPhase := t.status == "running" && prompts.IntentHasDesignPhase(t.intent)
 		shouldScrape := t.status == "refactoring" || t.status == "implementing" || (prompts.IntentProducesPR(t.intent) && !inDesignPhase)
 		if shouldScrape {
 			if target, ok := windowTargets[windowName]; ok {
@@ -313,15 +332,24 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 		if !windowAlive {
 			now := time.Now().Format(time.RFC3339)
 
-			// Design-phase tasks: scrape ADR from worktree before marking complete
-			if t.status == "running" && prompts.IntentHasDesignPhase(t.intent) {
-				worktreeName := fmt.Sprintf("directive-%d", t.id)
-				if adr := scrapeADRFromWorktree(t.repoPath, worktreeName); adr != "" {
-					title := extractTitle(adr)
-					db.Exec(`UPDATE claude_tasks SET status='completed', result=?, title=?, completed_at=? WHERE id=?`,
-						adr, title, now, t.id)
+			// Design-phase tasks: check if ADR was already captured proactively,
+			// or try one last scrape before the worktree is gone
+			if inDesignPhase {
+				var existingResult string
+				db.QueryRow(`SELECT COALESCE(result, '') FROM claude_tasks WHERE id=?`, t.id).Scan(&existingResult)
+				if existingResult == "" {
+					// Last chance: try scraping before worktree cleanup
+					worktreeName := fmt.Sprintf("directive-%d", t.id)
+					if adr := scrapeADRFromWorktree(t.repoPath, worktreeName); adr != "" {
+						existingResult = adr
+						title := extractTitle(adr)
+						db.Exec(`UPDATE claude_tasks SET result=?, title=? WHERE id=?`, adr, title, t.id)
+					}
+				}
+				if existingResult != "" {
+					db.Exec(`UPDATE claude_tasks SET status='completed', completed_at=? WHERE id=?`, now, t.id)
 					bus.Publish(Event{Type: "claude:task", Data: map[string]any{
-						"id": t.id, "status": "completed", "title": title,
+						"id": t.id, "status": "completed",
 					}})
 					log.Printf("cmdr: task %d completed (design phase, ADR captured)", t.id)
 					continue
