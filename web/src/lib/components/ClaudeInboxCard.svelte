@@ -46,6 +46,14 @@
 		return path.split('/').pop() ?? path;
 	}
 
+	function fallbackTitle(task: ClaudeTask): string {
+		const parts: string[] = [];
+		if (task.intent) parts.push(task.intent.replaceAll('-', ' '));
+		if (task.repoPath) parts.push(repoName(task.repoPath));
+		if (task.commitSha) parts.push(shortSha(task.commitSha));
+		return parts.join(': ') || 'Untitled';
+	}
+
 	function parsePrUrl(url: string): string {
 		const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
 		if (m) return `${m[2]}#${m[3]}`;
@@ -123,7 +131,7 @@
 						<div class="flex items-center gap-2">
 							<span class="text-xs leading-snug truncate min-w-0 flex-1
 								{task.status === 'failed' || task.status === 'done' ? 'text-bourbon-400 line-through' : task.status === 'completed' || task.status === 'resolved' ? 'text-bourbon-300' : 'text-bourbon-100'}">
-								{task.title || `${repoName(task.repoPath)}/${task.commitSha ? shortSha(task.commitSha) : ''}`}
+								{task.title || fallbackTitle(task)}
 							</span>
 							<span class="font-mono text-[10px] px-1.5 py-0.5 rounded-full shrink-0 {badgeColor(task.type)}">{task.type}</span>
 						</div>

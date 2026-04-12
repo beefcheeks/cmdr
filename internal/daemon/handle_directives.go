@@ -77,18 +77,8 @@ func handleSaveDirective(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			body.RepoPath, body.Content, body.Intent, body.ID)
 
 		if body.RepoPath != oldRepo || body.Intent != oldIntent {
-			// Derive title for the SSE event
-			title := directiveTitle(body.Content)
-			if body.Intent != "" {
-				for _, intent := range prompts.ListIntents() {
-					if intent.ID == body.Intent {
-						title = strings.ToLower(intent.Name) + ": " + title
-						break
-					}
-				}
-			}
 			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
-				"id": body.ID, "status": "draft", "title": title, "repoPath": body.RepoPath, "intent": body.Intent,
+				"id": body.ID, "status": "draft", "repoPath": body.RepoPath, "intent": body.Intent,
 			}})
 		}
 
