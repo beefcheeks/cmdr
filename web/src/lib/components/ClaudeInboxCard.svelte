@@ -10,6 +10,7 @@
 		clearAllCompleted
 	} from '$lib/taskStore';
 	import { delegationSummaries } from '$lib/delegationStore';
+	import { timeAgo } from '$lib/timeStore';
 
 	let {
 		onviewresult,
@@ -28,19 +29,6 @@
 			const { result } = await getClaudeTaskResult(task.id);
 			onviewresult(task, result);
 		} catch { /* silent */ }
-	}
-
-	function timeAgo(dateStr: string): string {
-		const date = new Date(dateStr);
-		const now = new Date();
-		const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-		if (seconds < 60) return 'just now';
-		const minutes = Math.floor(seconds / 60);
-		if (minutes < 60) return `${minutes}m ago`;
-		const hours = Math.floor(minutes / 60);
-		if (hours < 24) return `${hours}h ago`;
-		const days = Math.floor(hours / 24);
-		return `${days}d ago`;
 	}
 
 	function shortSha(sha: string): string { return sha.slice(0, 7); }
@@ -107,7 +95,7 @@
 						</div>
 						<div class="flex items-center gap-2 text-[10px]">
 							<span class="font-mono text-bourbon-600">{summary.members.join(' · ')}</span>
-							<span class="text-bourbon-700 ml-auto">{timeAgo(summary.latestAt)}</span>
+							<span class="text-bourbon-700 ml-auto">{$timeAgo(summary.latestAt)}</span>
 						</div>
 					</div>
 				</button>
@@ -183,7 +171,7 @@
 							{:else}
 								{#if task.repoPath}<span class="font-mono text-bourbon-500">{repoName(task.repoPath)}</span>{/if}
 							{/if}
-							<span class="text-bourbon-700 ml-auto">{timeAgo(task.createdAt)}</span>
+							<span class="text-bourbon-700 ml-auto">{$timeAgo(task.createdAt)}</span>
 						</div>
 					</div>
 
@@ -195,7 +183,7 @@
 								tabindex="0"
 								onclick={(e) => { e.stopPropagation(); dismissTask(task.id); }}
 								onkeydown={(e) => { if (e.key === 'Enter') dismissTask(task.id); }}
-								class="btn-chiclet-danger !w-6 !h-6"
+								class="btn-chiclet-sm btn-chiclet-danger"
 								title="Dismiss"
 							>
 								<X size={14} />

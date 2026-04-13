@@ -82,34 +82,28 @@
 
 /* Component classes — reusable design system patterns */
 @layer components {
-	.btn-chiclet {
-		@apply shrink-0 w-8 h-8 flex items-center justify-center
+	/* Chiclet buttons: size variants with default color, compose with -danger/-alt for color */
+	.btn-chiclet, .btn-chiclet-sm {
+		@apply shrink-0 flex items-center justify-center
 			rounded-md border-t
-			bg-cmd-500 text-cmd-300 border-t-cmd-400/50
-			shadow-[0_2px_0_0_var(--color-cmd-700)]
 			hover:brightness-110
 			active:translate-y-0.5 active:shadow-none
-			transition-all cursor-pointer;
+			transition-all cursor-pointer
+			bg-cmd-500 text-cmd-300 border-t-cmd-400/50
+			shadow-[0_2px_0_0_var(--color-cmd-700)];
 	}
 
+	.btn-chiclet { @apply w-8 h-8; }
+	.btn-chiclet-sm { @apply w-6 h-6; }
+
 	.btn-chiclet-danger {
-		@apply shrink-0 w-8 h-8 flex items-center justify-center
-			rounded-md border-t
-			bg-red-900 text-red-300 border-t-red-700/50
-			shadow-[0_2px_0_0_var(--color-red-950)]
-			hover:brightness-110
-			active:translate-y-0.5 active:shadow-none
-			transition-all cursor-pointer;
+		@apply bg-red-900 text-red-300 border-t-red-700/50
+			shadow-[0_2px_0_0_var(--color-red-950)];
 	}
 
 	.btn-chiclet-alt {
-		@apply shrink-0 w-8 h-8 flex items-center justify-center
-			rounded-md border-t
-			bg-run-500 text-run-700 border-t-run-400/50
-			shadow-[0_2px_0_0_var(--color-run-700)]
-			hover:brightness-110
-			active:translate-y-0.5 active:shadow-none
-			transition-all cursor-pointer;
+		@apply bg-run-500 text-run-700 border-t-run-400/50
+			shadow-[0_2px_0_0_var(--color-run-700)];
 	}
 
 	.insight-callout {

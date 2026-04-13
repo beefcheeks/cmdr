@@ -178,7 +178,7 @@
 						{#if session.attached}
 							<button
 								onclick={() => focusTmuxSession(session.name)}
-								class="btn-chiclet-alt"
+								class="btn-chiclet btn-chiclet-alt"
 							>
 								<Focus size={14} />
 							</button>
@@ -197,7 +197,7 @@
 							onmousedown={() => startHoldKill(session.name)}
 							onmouseup={cancelHoldKill}
 							onmouseleave={cancelHoldKill}
-							class="btn-chiclet-danger relative overflow-hidden"
+							class="btn-chiclet btn-chiclet-danger relative overflow-hidden"
 						>
 							{#if holdingKill === session.name}
 								<div

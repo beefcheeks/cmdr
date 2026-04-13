@@ -3,6 +3,7 @@
 	import { X, ArrowRight, GitBranch, Loader2, CircleCheck, CircleX } from 'lucide-svelte';
 	import { getDelegations, type Delegation } from '$lib/api';
 	import { events } from '$lib/events';
+	import { timeAgo } from '$lib/timeStore';
 
 	let {
 		squad,
@@ -36,20 +37,6 @@
 		});
 		return unsub;
 	});
-
-	function timeAgo(dateStr: string): string {
-		if (!dateStr) return '';
-		const date = new Date(dateStr);
-		const now = new Date();
-		const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-		if (seconds < 60) return 'just now';
-		const minutes = Math.floor(seconds / 60);
-		if (minutes < 60) return `${minutes}m ago`;
-		const hours = Math.floor(minutes / 60);
-		if (hours < 24) return `${hours}h ago`;
-		const days = Math.floor(hours / 24);
-		return `${days}d ago`;
-	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
@@ -112,7 +99,7 @@
 										<ArrowRight size={10} class="text-bourbon-600" />
 										<span class="text-xs font-mono text-bourbon-300">{d.delegationTo}</span>
 									</div>
-									<span class="text-[10px] text-bourbon-700">{timeAgo(d.createdAt)}</span>
+									<span class="text-[10px] text-bourbon-700">{$timeAgo(d.createdAt)}</span>
 								</div>
 								{#if d.title || d.summary}
 									<div class="mt-1.5 text-sm text-bourbon-400">{d.title || d.summary}</div>
@@ -147,7 +134,7 @@
 										<ArrowRight size={10} class="text-bourbon-700" />
 										<span class="text-xs font-mono text-bourbon-400">{d.delegationTo}</span>
 									</div>
-									<span class="text-[10px] text-bourbon-700">{timeAgo(d.completedAt || d.createdAt)}</span>
+									<span class="text-[10px] text-bourbon-700">{$timeAgo(d.completedAt || d.createdAt)}</span>
 								</div>
 								{#if d.title || d.summary}
 									<div class="mt-1.5 text-sm text-bourbon-500">{d.title || d.summary}</div>
