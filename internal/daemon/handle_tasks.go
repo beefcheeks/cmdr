@@ -338,12 +338,12 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 
 		if systemPrompt != "" {
 			escapedIntent := strings.ReplaceAll(systemPrompt, "'", "'\\''")
-			cmd = fmt.Sprintf("cat '%s' | %s --append-system-prompt '%s'", promptFile, baseCmd, escapedIntent)
+			cmd = fmt.Sprintf("%s --append-system-prompt '%s' < '%s'", baseCmd, escapedIntent, promptFile)
 		} else {
-			cmd = fmt.Sprintf("cat '%s' | %s", promptFile, baseCmd)
+			cmd = fmt.Sprintf("%s < '%s'", baseCmd, promptFile)
 		}
 	} else {
-		cmd = fmt.Sprintf("cat '%s' | %s", promptFile, baseCmd)
+		cmd = fmt.Sprintf("%s < '%s'", baseCmd, promptFile)
 	}
 
 	// Resolve session and create window
