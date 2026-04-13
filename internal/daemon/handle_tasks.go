@@ -306,8 +306,14 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 	// Resolve image references to absolute paths Claude can read
 	prompt := resolveImageRefs(cfg.UserPrompt)
 
+	// Write prompt to a temp file to avoid tmux command length limits.
+	// Tmux has a ~500 char arg limit for new-window commands; ADRs can be 20K+.
+	promptDir := filepath.Join(os.TempDir(), "cmdr")
+	os.MkdirAll(promptDir, 0o700)
+	promptFile := filepath.Join(promptDir, fmt.Sprintf("task-%d-prompt.md", cfg.TaskID))
+	os.WriteFile(promptFile, []byte(prompt), 0o644)
+
 	// Build claude command — omit -w when no worktree prefix (e.g. delegations)
-	escaped := strings.ReplaceAll(prompt, "'", "'\\''")
 	var baseCmd string
 	if cfg.WorktreePrefix != "" {
 		baseCmd = fmt.Sprintf("claude -w %s --name 'cmdr-task-%d'", worktreeName, cfg.TaskID)
@@ -332,12 +338,12 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 
 		if systemPrompt != "" {
 			escapedIntent := strings.ReplaceAll(systemPrompt, "'", "'\\''")
-			cmd = fmt.Sprintf("%s --append-system-prompt '%s' '%s'", baseCmd, escapedIntent, escaped)
+			cmd = fmt.Sprintf("cat '%s' | %s --append-system-prompt '%s'", promptFile, baseCmd, escapedIntent)
 		} else {
-			cmd = fmt.Sprintf("%s '%s'", baseCmd, escaped)
+			cmd = fmt.Sprintf("cat '%s' | %s", promptFile, baseCmd)
 		}
 	} else {
-		cmd = fmt.Sprintf("%s '%s'", baseCmd, escaped)
+		cmd = fmt.Sprintf("cat '%s' | %s", promptFile, baseCmd)
 	}
 
 	// Resolve session and create window
