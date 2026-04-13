@@ -54,9 +54,9 @@
 	function badgeColor(type: string): string {
 		switch (type) {
 			case 'review': return 'text-teal-400 bg-teal-700/30';
-			case 'directive': return 'text-cmd-400 bg-cmd-700/30';
+			case 'directive': return 'text-blue-400 bg-blue-700/30';
 			case 'ask': return 'text-bourbon-400 bg-bourbon-700/30';
-			default: return 'text-bourbon-500 bg-bourbon-800/30';
+			default: return 'text-cmd-400 bg-cmd-700/30';
 		}
 	}
 </script>

@@ -251,7 +251,7 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 	// Exclude headless tasks (review, ask) — they run via claude -p, not tmux windows,
 	// so window liveness checks would falsely mark them as completed.
 	rows, err := db.Query(`
-		SELECT id, type, repo_path, COALESCE(intent, ''), status
+		SELECT id, type, repo_path, COALESCE(intent, ''), status, COALESCE(started_at, created_at)
 		FROM claude_tasks
 		WHERE status IN ('running', 'refactoring', 'implementing')
 		  AND NOT (type IN ('review', 'ask') AND status = 'running')
@@ -272,16 +272,17 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 	}
 
 	type task struct {
-		id       int
-		taskType string
-		repoPath string
-		intent   string
-		status   string
+		id        int
+		taskType  string
+		repoPath  string
+		intent    string
+		status    string
+		startedAt string
 	}
 	var tasks []task
 	for rows.Next() {
 		var t task
-		if err := rows.Scan(&t.id, &t.taskType, &t.repoPath, &t.intent, &t.status); err != nil {
+		if err := rows.Scan(&t.id, &t.taskType, &t.repoPath, &t.intent, &t.status, &t.startedAt); err != nil {
 			continue
 		}
 		tasks = append(tasks, t)
@@ -300,7 +301,7 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 			db.QueryRow(`SELECT COALESCE(result, '') FROM claude_tasks WHERE id=?`, t.id).Scan(&existingResult)
 			if existingResult == "" {
 				worktreeName := fmt.Sprintf("directive-%d", t.id)
-				if adr := scrapeADRFromWorktree(t.repoPath, worktreeName); adr != "" {
+				if adr := scrapeADRFromWorktree(t.repoPath, worktreeName, t.startedAt); adr != "" {
 					now := time.Now().Format(time.RFC3339)
 					title := extractTitle(adr)
 					db.Exec(`UPDATE claude_tasks SET status='completed', result=?, title=?, completed_at=? WHERE id=?`,
@@ -453,15 +454,20 @@ func scrapePaneForPR(target string) string {
 	return ""
 }
 
-// scrapeADRFromWorktree finds the most recently modified ADR-*.md file in the
-// worktree's docs/ directory and returns its contents. Uses mtime so the newly
-// written ADR is picked up even if the worktree inherited older ADRs.
-func scrapeADRFromWorktree(repoPath, worktreeName string) string {
+// scrapeADRFromWorktree finds an ADR-*.md file in the worktree's docs/ directory
+// that was modified after the task started. Ignores inherited ADRs from before the task.
+func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) string {
 	docsDir := filepath.Join(repoPath, ".claude", "worktrees", worktreeName, "docs")
 	entries, err := os.ReadDir(docsDir)
 	if err != nil {
 		return ""
 	}
+
+	taskStart, _ := time.Parse(time.RFC3339, startedAt)
+	// Require ADR to be written meaningfully after task start — worktree checkout
+	// touches all files at creation time, so a buffer avoids false positives.
+	threshold := taskStart.Add(60 * time.Second)
+
 	var latestName string
 	var latestMod time.Time
 	for _, e := range entries {
@@ -470,6 +476,10 @@ func scrapeADRFromWorktree(repoPath, worktreeName string) string {
 		}
 		info, err := e.Info()
 		if err != nil {
+			continue
+		}
+		// Only consider ADRs modified well after the task started
+		if !taskStart.IsZero() && !info.ModTime().After(threshold) {
 			continue
 		}
 		if info.ModTime().After(latestMod) {
