@@ -218,12 +218,15 @@
 		<h3 class="text-xs font-semibold text-bourbon-500 mt-6 mb-2">Additional Claude Instances</h3>
 		<div class="flex flex-col gap-1.5">
 			{#each unmatchedClaude as instance}
-				<div class="flex items-center gap-3 bg-bourbon-950/30 border border-bourbon-800 rounded-lg px-5 py-3.5">
-					<span class="text-cmd-400"><Sparkles size={14} /></span>
-					<span class="font-semibold text-bourbon-100">{instance.project}</span>
-					<span class="text-xs text-bourbon-600 font-mono">{shortenPath(instance.cwd)}</span>
-					<span class="text-xs text-bourbon-600">&middot; {instance.uptime}</span>
-					<span class="text-xs text-bourbon-600">&middot; pid {instance.pid}</span>
+				<div class="flex items-center gap-3 bg-bourbon-950/30 border border-bourbon-800 rounded-lg px-5 py-3.5 min-w-0">
+					<span class="text-cmd-400 shrink-0"><Sparkles size={14} /></span>
+					<span class="font-semibold text-bourbon-100 shrink-0">{instance.project}</span>
+					<span
+						class="text-xs text-bourbon-600 font-mono truncate min-w-0"
+						style="direction: rtl; text-align: left;"
+					><bdi>{shortenPath(instance.cwd)}</bdi></span>
+					<span class="text-xs text-bourbon-600 shrink-0">&middot; {instance.uptime}</span>
+					<span class="text-xs text-bourbon-600 shrink-0">&middot; pid {instance.pid}</span>
 				</div>
 			{/each}
 		</div>
