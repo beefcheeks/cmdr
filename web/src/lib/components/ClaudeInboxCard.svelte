@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CheckCircle, XCircle, Wrench, GitPullRequestArrow, X, Pencil, Plus, MessageCircleQuestion } from 'lucide-svelte';
+	import { CircleCheck, CircleX, Wrench, GitPullRequestArrow, X, Pencil, Plus, CircleQuestionMark, Users } from 'lucide-svelte';
 	import { getClaudeTaskResult, type ClaudeTask } from '$lib/api';
 	import {
 		loaded as loadedStore,
@@ -9,15 +9,18 @@
 		dismiss as dismissTask,
 		clearAllCompleted
 	} from '$lib/taskStore';
+	import { delegationSummaries } from '$lib/delegationStore';
 
 	let {
 		onviewresult,
 		ondraft,
-		onask
+		onask,
+		onopenmissions
 	}: {
 		onviewresult: (task: ClaudeTask, result: string) => void;
 		ondraft: (taskId?: number, repoPath?: string) => void;
 		onask: (taskId: number) => void;
+		onopenmissions: (squad: string) => void;
 	} = $props();
 
 	async function viewResult(task: ClaudeTask) {
@@ -81,10 +84,34 @@
 			{/if}
 		</div>
 
-		{#if $visibleTasksStore.length === 0}
+		{#if $visibleTasksStore.length === 0 && $delegationSummaries.length === 0}
 			<p class="text-sm text-bourbon-600">No new messages.</p>
 		{:else}
-		<div class="flex flex-col gap-1">
+		<div class="flex flex-col gap-2">
+			{#each $delegationSummaries as summary}
+				<button
+					class="group relative flex items-start gap-3 border-l-2 border-l-run-500 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors border border-bourbon-800 bg-bourbon-950/30 hover:bg-bourbon-800/50 cursor-pointer"
+					onclick={() => onopenmissions(summary.squad)}
+				>
+					<div class="pt-0.5 shrink-0">
+						<Users size={15} class="text-run-500/60" />
+					</div>
+					<div class="flex flex-col gap-1 min-w-0 flex-1">
+						<div class="flex items-center gap-2">
+							<span class="font-display text-[10px] font-bold uppercase tracking-widest text-run-500">{summary.squad}</span>
+							{#if summary.activeCount > 0}
+								<span class="text-[10px] font-mono text-run-400 animate-pulse">{summary.activeCount} active</span>
+								<span class="text-bourbon-700">·</span>
+							{/if}
+							<span class="text-[10px] text-bourbon-600">{summary.totalCount - summary.activeCount} completed</span>
+						</div>
+						<div class="flex items-center gap-2 text-[10px]">
+							<span class="font-mono text-bourbon-600">{summary.members.join(' · ')}</span>
+							<span class="text-bourbon-700 ml-auto">{timeAgo(summary.latestAt)}</span>
+						</div>
+					</div>
+				</button>
+			{/each}
 			{#each $visibleTasksStore as task}
 				<button
 					class="group relative flex items-start gap-3 rounded-lg px-3 py-2.5 -mx-1 text-left transition-colors hover:bg-bourbon-800/50
@@ -105,7 +132,7 @@
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">
 						{#if task.type === 'ask' && task.status === 'completed'}
-							<span class="text-cmd-400"><MessageCircleQuestion size={15} /></span>
+							<span class="text-cmd-400"><CircleQuestionMark size={15} /></span>
 						{:else if task.status === 'draft'}
 							<span class="text-cmd-400"><Pencil size={15} /></span>
 						{:else if task.type === 'ask' && task.status === 'running'}
@@ -117,11 +144,11 @@
 						{:else if task.status === 'resolved'}
 							<span class="text-green-400"><GitPullRequestArrow size={15} /></span>
 						{:else if task.status === 'completed'}
-							<span class="text-green-400"><CheckCircle size={15} /></span>
+							<span class="text-green-400"><CircleCheck size={15} /></span>
 						{:else if task.status === 'done'}
-							<span class="text-bourbon-500"><CheckCircle size={15} /></span>
+							<span class="text-bourbon-500"><CircleCheck size={15} /></span>
 						{:else}
-							<span class="text-red-400"><XCircle size={15} /></span>
+							<span class="text-red-400"><CircleX size={15} /></span>
 						{/if}
 					</div>
 

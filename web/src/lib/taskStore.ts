@@ -15,7 +15,8 @@ export const loaded = writable(false);
 
 // --- Derived views ---
 
-export const visibleTasks = derived(tasks, (t) => t
+export const visibleTasks = derived(tasks, (t) =>
+	t.filter((task) => task.type !== 'delegation')
 );
 export const activeCount = derived(visibleTasks, (t) =>
 	t.filter((task) => task.status === 'running' || task.status === 'pending' || task.status === 'refactoring' || task.status === 'implementing').length

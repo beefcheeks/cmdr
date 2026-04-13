@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { MessageCircleQuestion, Send } from 'lucide-svelte';
+	import { CircleQuestionMark, Send } from 'lucide-svelte';
 	import { askClaude } from '$lib/api';
 
 	let open = $state(false);
@@ -37,7 +37,7 @@
 	<div class="fixed bottom-6 right-6 z-50 w-96">
 		<div class="bg-bourbon-900 border border-bourbon-800 rounded-2xl shadow-2xl shadow-black/40 overflow-hidden">
 			<div class="flex items-center gap-2 px-4 py-2.5 border-b border-bourbon-800/50">
-				<MessageCircleQuestion size={14} class="text-run-500 shrink-0" />
+				<CircleQuestionMark size={14} class="text-run-500 shrink-0" />
 				<span class="font-display text-[10px] font-bold uppercase tracking-widest text-run-500">Ask Claude</span>
 			</div>
 			<div class="p-3">
@@ -83,7 +83,7 @@
 		onclick={handleOpen}
 		class="fixed bottom-6 right-6 z-40 flex items-center gap-2 bg-bourbon-900 border border-bourbon-800 rounded-full pl-3.5 pr-4 py-2.5 shadow-lg shadow-black/30 hover:border-bourbon-700 hover:shadow-xl transition-all cursor-pointer group"
 	>
-		<MessageCircleQuestion size={16} class="text-run-500 group-hover:text-run-400 transition-colors" />
+		<CircleQuestionMark size={16} class="text-run-500 group-hover:text-run-400 transition-colors" />
 		<span class="font-display text-[10px] font-bold uppercase tracking-widest text-bourbon-500 group-hover:text-bourbon-400 transition-colors">Ask</span>
 	</button>
 {/if}

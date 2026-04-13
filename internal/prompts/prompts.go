@@ -75,6 +75,10 @@ func ListIntents() []Intent {
 			continue
 		}
 		id := strings.TrimSuffix(e.Name(), ".md")
+		// Internal-only intents (used by cmdr CLI, not user-facing)
+		if id == "delegation" {
+			continue
+		}
 		name := strings.ReplaceAll(id, "-", " ")
 		// Title case
 		words := strings.Fields(name)

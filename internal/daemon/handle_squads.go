@@ -208,7 +208,10 @@ func handleListDelegations(db *sql.DB) http.HandlerFunc {
 		DelegationFrom string `json:"delegationFrom"`
 		DelegationTo   string `json:"delegationTo"`
 		Title          string `json:"title"`
+		Summary        string `json:"summary"`
+		Branch         string `json:"branch"`
 		RepoPath       string `json:"repoPath"`
+		Result         string `json:"result,omitempty"`
 		CreatedAt      string `json:"createdAt"`
 		CompletedAt    string `json:"completedAt,omitempty"`
 	}
@@ -216,14 +219,18 @@ func handleListDelegations(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		squadFilter := r.URL.Query().Get("squad")
 
-		query := `SELECT id, status, squad, delegation_from, delegation_to, COALESCE(title, ''), repo_path, created_at, COALESCE(completed_at, '')
-			FROM claude_tasks WHERE type = 'delegation'`
+		query := `SELECT ct.id, ct.status, d.squad, d.from_alias, d.to_alias,
+				COALESCE(ct.title, ''), d.summary, d.branch, ct.repo_path,
+				COALESCE(ct.result, ''), ct.created_at, COALESCE(ct.completed_at, '')
+			FROM claude_tasks ct
+			JOIN delegations d ON d.task_id = ct.id
+			WHERE ct.type = 'delegation'`
 		var args []any
 		if squadFilter != "" {
-			query += ` AND squad = ?`
+			query += ` AND d.squad = ?`
 			args = append(args, squadFilter)
 		}
-		query += ` ORDER BY created_at DESC`
+		query += ` ORDER BY ct.created_at DESC`
 
 		rows, err := db.Query(query, args...)
 		if err != nil {
@@ -235,7 +242,7 @@ func handleListDelegations(db *sql.DB) http.HandlerFunc {
 		var delegations []delegation
 		for rows.Next() {
 			var d delegation
-			if err := rows.Scan(&d.ID, &d.Status, &d.Squad, &d.DelegationFrom, &d.DelegationTo, &d.Title, &d.RepoPath, &d.CreatedAt, &d.CompletedAt); err != nil {
+			if err := rows.Scan(&d.ID, &d.Status, &d.Squad, &d.DelegationFrom, &d.DelegationTo, &d.Title, &d.Summary, &d.Branch, &d.RepoPath, &d.Result, &d.CreatedAt, &d.CompletedAt); err != nil {
 				continue
 			}
 			delegations = append(delegations, d)
@@ -246,5 +253,76 @@ func handleListDelegations(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(delegations)
+	}
+}
+
+func handleDelegationSummary(db *sql.DB) http.HandlerFunc {
+	type summary struct {
+		Squad       string   `json:"squad"`
+		ActiveCount int      `json:"activeCount"`
+		TotalCount  int      `json:"totalCount"`
+		Members     []string `json:"members"`
+		LatestAt    string   `json:"latestAt"`
+		LatestTitle string   `json:"latestTitle"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		rows, err := db.Query(`
+			SELECT d.squad,
+				SUM(CASE WHEN ct.status IN ('running','pending') THEN 1 ELSE 0 END),
+				COUNT(*),
+				MAX(ct.created_at)
+			FROM claude_tasks ct
+			JOIN delegations d ON d.task_id = ct.id
+			WHERE ct.type = 'delegation'
+			GROUP BY d.squad
+			HAVING COUNT(*) > 0
+		`)
+		if err != nil {
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var summaries []summary
+		for rows.Next() {
+			var s summary
+			if err := rows.Scan(&s.Squad, &s.ActiveCount, &s.TotalCount, &s.LatestAt); err != nil {
+				continue
+			}
+
+			// Get unique member aliases
+			mRows, _ := db.Query(
+				`SELECT DISTINCT from_alias FROM delegations WHERE squad = ?
+				 UNION SELECT DISTINCT to_alias FROM delegations WHERE squad = ?`,
+				s.Squad, s.Squad,
+			)
+			if mRows != nil {
+				for mRows.Next() {
+					var alias string
+					mRows.Scan(&alias)
+					s.Members = append(s.Members, alias)
+				}
+				mRows.Close()
+			}
+			if s.Members == nil {
+				s.Members = []string{}
+			}
+
+			// Get latest title
+			db.QueryRow(
+				`SELECT COALESCE(ct.title, d.summary) FROM claude_tasks ct
+				 JOIN delegations d ON d.task_id = ct.id
+				 WHERE d.squad = ? ORDER BY ct.created_at DESC LIMIT 1`, s.Squad,
+			).Scan(&s.LatestTitle)
+
+			summaries = append(summaries, s)
+		}
+		if summaries == nil {
+			summaries = []summary{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(summaries)
 	}
 }

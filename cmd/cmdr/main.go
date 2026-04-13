@@ -209,8 +209,11 @@ func printSquadContext(database *sql.DB, repoPath string) error {
 
 	// Append active delegation status
 	dRows, err := database.Query(
-		`SELECT delegation_to, COALESCE(title, ''), status FROM claude_tasks
-		 WHERE type = 'delegation' AND squad = ? AND delegation_from = ? AND status IN ('running', 'completed')`,
+		`SELECT d.to_alias, COALESCE(ct.title, ''), ct.status
+		 FROM claude_tasks ct
+		 JOIN delegations d ON d.task_id = ct.id
+		 WHERE ct.type = 'delegation' AND d.squad = ? AND d.from_alias = ?
+		   AND ct.status IN ('running', 'completed')`,
 		squadName, alias,
 	)
 	if err == nil {
@@ -388,19 +391,26 @@ func enlistCmd() *cobra.Command {
 			// Create task row
 			prompt := fmt.Sprintf("## Enlistment from %s\n\n**Summary:** %s\n\n%s", from, summary, details)
 			now := time.Now().Format(time.RFC3339)
-			result, err := database.Exec(
-				`INSERT INTO claude_tasks (type, status, repo_path, prompt, intent, squad, delegation_from, delegation_to, created_at, started_at)
-				 VALUES ('delegation', 'running', ?, ?, 'delegation', ?, ?, ?, ?, ?)`,
-				targetPath, prompt, squad, from, to, now, now,
+			taskResult, err := database.Exec(
+				`INSERT INTO claude_tasks (type, status, repo_path, prompt, intent, created_at, started_at)
+				 VALUES ('delegation', 'running', ?, ?, 'delegation', ?, ?)`,
+				targetPath, prompt, now, now,
 			)
 			if err != nil {
 				return fmt.Errorf("creating task: %w", err)
 			}
-			taskID64, _ := result.LastInsertId()
+			taskID64, _ := taskResult.LastInsertId()
 			taskID := int(taskID64)
 
 			// Create branch
 			branchName := fmt.Sprintf("squad/%s/%d", squad, taskID)
+
+			// Insert delegation details
+			database.Exec(
+				`INSERT INTO delegations (task_id, squad, from_alias, to_alias, branch, summary, details)
+				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+				taskID, squad, from, to, branchName, summary, details,
+			)
 			if out, err := exec.Command("git", "-C", targetPath, "checkout", "-b", branchName).CombinedOutput(); err != nil {
 				// Clean up task on failure
 				database.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
@@ -510,10 +520,11 @@ func checkDelegationsCmd() *cobra.Command {
 
 			// Find completed delegations from this repo that haven't been notified
 			rows, err := database.Query(
-				`SELECT id, delegation_to, COALESCE(title, ''), COALESCE(result, '')
-				 FROM claude_tasks
-				 WHERE type = 'delegation' AND squad = ? AND delegation_from = ?
-				   AND status IN ('completed', 'done') AND notified = 0`,
+				`SELECT ct.id, d.to_alias, COALESCE(ct.title, ''), COALESCE(ct.result, '')
+				 FROM claude_tasks ct
+				 JOIN delegations d ON d.task_id = ct.id
+				 WHERE ct.type = 'delegation' AND d.squad = ? AND d.from_alias = ?
+				   AND ct.status IN ('completed', 'done') AND d.notified = 0`,
 				squadName, alias,
 			)
 			if err != nil {
@@ -547,7 +558,7 @@ func checkDelegationsCmd() *cobra.Command {
 				notifyArgs[i] = id
 			}
 			database.Exec(
-				fmt.Sprintf(`UPDATE claude_tasks SET notified = 1 WHERE id IN (%s)`, strings.Join(placeholders, ",")),
+				fmt.Sprintf(`UPDATE delegations SET notified = 1 WHERE task_id IN (%s)`, strings.Join(placeholders, ",")),
 				notifyArgs...,
 			)
 

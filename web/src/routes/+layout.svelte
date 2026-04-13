@@ -10,12 +10,14 @@
 	import { initTaskStore } from '$lib/taskStore';
 	import { initSessionStore } from '$lib/sessionStore';
 	import { initCommitStore } from '$lib/commitStore';
+	import { initDelegationStore } from '$lib/delegationStore';
 
 	onMount(() => {
 		preload(SFX.hover, SFX.click, SFX.newCommits, SFX.dispatch);
 		initTaskStore();
 		initSessionStore();
 		initCommitStore();
+		initDelegationStore();
 	});
 
 	let { children } = $props();

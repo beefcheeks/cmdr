@@ -14,6 +14,7 @@
 	import DesignResultModal from '$lib/components/DesignResultModal.svelte';
 	import AskResultModal from '$lib/components/AskResultModal.svelte';
 	import DraftModal from '$lib/components/DraftModal.svelte';
+	import MissionsModal from '$lib/components/MissionsModal.svelte';
 
 	const now = new Date();
 	const hour = now.getHours();
@@ -56,6 +57,9 @@
 
 	// --- Ask modal ---
 	let askTaskId: number | null = $state(null);
+
+	// --- Missions modal ---
+	let missionsSquad: string | null = $state(null);
 
 	// --- Draft modal ---
 	let showDraft = $state(false);
@@ -109,6 +113,7 @@
 			}}
 			ondraft={(taskId, repoPath) => openDraft(repoPath, undefined, taskId)}
 			onask={(id) => { askTaskId = id; }}
+			onopenmissions={(squad) => { missionsSquad = squad; }}
 		/>
 
 		{#if $commitsLoaded}
@@ -172,6 +177,11 @@
 		initial={draftInitial}
 		onclose={() => { showDraft = false; draftInitial = undefined; }}
 	/>
+{/if}
+
+<!-- Missions Modal -->
+{#if missionsSquad}
+	<MissionsModal squad={missionsSquad} onclose={() => { missionsSquad = null; }} />
 {/if}
 
 <!-- Ask Bubble -->

@@ -11,6 +11,7 @@ type EventMap = {
 	'brew:outdated': BrewOutdated;
 	'commits:sync': boolean;
 	'commits:watermark': { latestId: number };
+	'delegation:update': { squad: string; taskId: number; status: string };
 };
 
 type EventHandler<K extends keyof EventMap> = (data: EventMap[K]) => void;

@@ -271,6 +271,40 @@ export function deleteSquad(name: string): Promise<{ deleted: string }> {
 	});
 }
 
+// Delegations
+
+export interface DelegationSummary {
+	squad: string;
+	activeCount: number;
+	totalCount: number;
+	members: string[];
+	latestAt: string;
+	latestTitle: string;
+}
+
+export interface Delegation {
+	id: number;
+	status: string;
+	squad: string;
+	delegationFrom: string;
+	delegationTo: string;
+	title: string;
+	summary: string;
+	branch: string;
+	repoPath: string;
+	result: string;
+	createdAt: string;
+	completedAt: string;
+}
+
+export function getDelegationSummary(): Promise<DelegationSummary[]> {
+	return request('/squads/delegation-summary');
+}
+
+export function getDelegations(squad: string): Promise<Delegation[]> {
+	return request(`/squads/delegations?squad=${encodeURIComponent(squad)}`);
+}
+
 // Analytics
 
 export interface ActivityBucket {

@@ -194,29 +194,49 @@ func migrate(d *sql.DB) error {
 		d.Exec(`ALTER TABLE repos ADD COLUMN monitor INTEGER NOT NULL DEFAULT 1`)
 	}
 
-	// Delegation columns on claude_tasks
+	// Vestigial delegation columns on claude_tasks (kept for SQLite compat, no longer written to)
 	var hasTaskSquad bool
 	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='squad'`).Scan(&hasTaskSquad)
 	if !hasTaskSquad {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN squad TEXT NOT NULL DEFAULT ''`)
 	}
-
 	var hasDelegationFrom bool
 	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='delegation_from'`).Scan(&hasDelegationFrom)
 	if !hasDelegationFrom {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN delegation_from TEXT NOT NULL DEFAULT ''`)
 	}
-
 	var hasDelegationTo bool
 	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='delegation_to'`).Scan(&hasDelegationTo)
 	if !hasDelegationTo {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN delegation_to TEXT NOT NULL DEFAULT ''`)
 	}
-
 	var hasNotified bool
 	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='notified'`).Scan(&hasNotified)
 	if !hasNotified {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN notified INTEGER NOT NULL DEFAULT 0`)
+	}
+
+	// Delegations table (normalized from claude_tasks)
+	d.Exec(`CREATE TABLE IF NOT EXISTS delegations (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		task_id    INTEGER NOT NULL REFERENCES claude_tasks(id) ON DELETE CASCADE,
+		squad      TEXT NOT NULL,
+		from_alias TEXT NOT NULL,
+		to_alias   TEXT NOT NULL,
+		branch     TEXT NOT NULL DEFAULT '',
+		summary    TEXT NOT NULL DEFAULT '',
+		details    TEXT NOT NULL DEFAULT '',
+		notified   INTEGER NOT NULL DEFAULT 0,
+		UNIQUE(task_id)
+	)`)
+
+	// Migrate existing delegation data from old columns to new table
+	var delegationsMigrated int
+	d.QueryRow(`SELECT COUNT(*) FROM delegations`).Scan(&delegationsMigrated)
+	if delegationsMigrated == 0 {
+		d.Exec(`INSERT OR IGNORE INTO delegations (task_id, squad, from_alias, to_alias, notified)
+			SELECT id, squad, delegation_from, delegation_to, notified
+			FROM claude_tasks WHERE type = 'delegation' AND squad != ''`)
 	}
 
 	return nil

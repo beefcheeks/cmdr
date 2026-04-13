@@ -357,6 +357,16 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 			bus.Publish(Event{Type: "claude:task", Data: map[string]any{
 				"id": t.id, "status": "completed",
 			}})
+			// Publish delegation-specific event for squad summary refresh
+			if t.taskType == "delegation" {
+				var squadName string
+				db.QueryRow(`SELECT squad FROM delegations WHERE task_id = ?`, t.id).Scan(&squadName)
+				if squadName != "" {
+					bus.Publish(Event{Type: "delegation:update", Data: map[string]any{
+						"squad": squadName, "taskId": t.id, "status": "completed",
+					}})
+				}
+			}
 			log.Printf("cmdr: task %d completed (window closed)", t.id)
 		}
 	}

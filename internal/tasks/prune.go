@@ -50,6 +50,24 @@ func PruneCommits(db *sql.DB) func() error {
 			log.Printf("cmdr: prune: deleted %d stuck headless tasks", rc)
 		}
 
+		// Delegation tasks for squads with no activity in 24h (delegations row cascades).
+		res, _ = db.Exec(`DELETE FROM claude_tasks WHERE type = 'delegation'
+			AND status IN ('completed', 'done', 'failed')
+			AND id IN (
+				SELECT ct.id FROM claude_tasks ct
+				JOIN delegations d ON d.task_id = ct.id
+				WHERE ct.type = 'delegation' AND ct.status IN ('completed', 'done', 'failed')
+				AND d.squad NOT IN (
+					SELECT d2.squad FROM claude_tasks ct2
+					JOIN delegations d2 ON d2.task_id = ct2.id
+					WHERE ct2.created_at > datetime('now', '-24 hours')
+						OR ct2.status IN ('running', 'pending')
+				)
+			)`)
+		if rc, _ := res.RowsAffected(); rc > 0 {
+			log.Printf("cmdr: prune: deleted %d stale delegation tasks", rc)
+		}
+
 		return nil
 	}
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { X, MessageCircleQuestion, Terminal, Trash2 } from 'lucide-svelte';
+	import { X, CircleQuestionMark, Terminal, Trash2 } from 'lucide-svelte';
 	import { marked } from 'marked';
 	import { getClaudeTaskResult, continueAsk } from '$lib/api';
 	import { dismiss as dismissTask } from '$lib/taskStore';
@@ -117,7 +117,7 @@
 		<!-- Header -->
 		<div class="flex items-center justify-between px-6 py-4 border-b border-bourbon-800 shrink-0">
 			<div class="flex items-center gap-3">
-				<MessageCircleQuestion size={14} class="text-run-500" />
+				<CircleQuestionMark size={14} class="text-run-500" />
 				<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">Ask Claude</h2>
 				{#if status === 'running'}
 					<div class="flex items-center gap-2">
