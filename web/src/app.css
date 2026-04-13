@@ -49,6 +49,18 @@
   }
 }
 
+/* Prism syntax highlighting — dark bourbon theme */
+.token.comment, .token.prolog, .token.doctype, .token.cdata { color: #655440; font-style: italic; }
+.token.punctuation { color: #897562; }
+.token.property, .token.tag, .token.boolean, .token.number, .token.constant, .token.symbol { color: #fac775; }
+.token.selector, .token.attr-name, .token.string, .token.char, .token.builtin { color: #4ade80; }
+.token.operator, .token.entity, .token.url { color: #a89580; }
+.token.atrule, .token.attr-value, .token.keyword { color: #7f77dd; }
+.token.function, .token.class-name { color: #60a5fa; }
+.token.regex, .token.important, .token.variable { color: #ef9f27; }
+.token.important, .token.bold { font-weight: bold; }
+.token.italic { font-style: italic; }
+
 /* Difft syntax-aware diff colors */
 .diff-add {
   color: #4ade80;

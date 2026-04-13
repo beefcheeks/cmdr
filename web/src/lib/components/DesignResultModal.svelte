@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { X, Pencil, Wrench, MessageSquarePlus, Trash2, Undo2, FileCheck } from 'lucide-svelte';
-	import { marked } from 'marked';
+	import { renderMarkdown } from '$lib/markdown';
 	import { updateClaudeTaskResult, startImplementation } from '$lib/api';
 	import LaunchGuard from './LaunchGuard.svelte';
 	import {
@@ -51,7 +51,7 @@
 		prose-blockquote:border-l-cmd-500 prose-blockquote:text-bourbon-400`;
 
 	function renderMd(md: string): string {
-		return marked(md, { breaks: true }) as string;
+		return renderMarkdown(md);
 	}
 
 	let fullHtml = $derived(renderMd(editing ? draft : result));

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { X, CircleQuestionMark, Terminal, Trash2 } from 'lucide-svelte';
-	import { marked } from 'marked';
+	import { renderMarkdown } from '$lib/markdown';
 	import { getClaudeTaskResult, continueAsk } from '$lib/api';
 	import { dismiss as dismissTask } from '$lib/taskStore';
 	import { events } from '$lib/events';
@@ -36,13 +36,13 @@
 
 	function renderMd(md: string): string {
 		const processed = md.replace(insightRe, (_match, content: string) => {
-			const inner = marked(content.trim(), { breaks: true }) as string;
+			const inner = renderMarkdown(content.trim());
 			return `<div class="insight-callout">`
 				+ `<div class="insight-header">★ Insight</div>`
 				+ `<div class="insight-body">${inner}</div>`
 				+ `</div>`;
 		});
-		return marked(processed, { breaks: true }) as string;
+		return renderMarkdown(processed);
 	}
 
 	// Friendly tool status messages

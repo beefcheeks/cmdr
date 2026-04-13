@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { X, Wrench, ExternalLink, Pencil, Trash2, MessageSquarePlus, Undo2 } from 'lucide-svelte';
-	import { marked } from 'marked';
+	import { renderMarkdown } from '$lib/markdown';
 	import { startRefactor, updateClaudeTaskResult } from '$lib/api';
 	import LaunchGuard from './LaunchGuard.svelte';
 	import {
@@ -57,7 +57,7 @@
 		prose-blockquote:border-l-run-500 prose-blockquote:text-bourbon-400`;
 
 	function renderMd(md: string): string {
-		return marked(md, { breaks: true }) as string;
+		return renderMarkdown(md);
 	}
 
 	// Full fallback HTML for non-parsed view
