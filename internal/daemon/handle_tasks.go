@@ -56,18 +56,6 @@ func handleListClaudeTasks(db *sql.DB) http.HandlerFunc {
 				&t.ErrorMsg, &t.CreatedAt, &t.StartedAt, &t.CompletedAt, &t.prompt, &t.Intent); err != nil {
 				continue
 			}
-			// Derive title if not set
-			if t.Title == "" && t.prompt != "" {
-				t.Title = directiveTitle(t.prompt)
-				if t.Intent != "" {
-					for _, intent := range prompts.ListIntents() {
-						if intent.ID == t.Intent {
-							t.Title = strings.ToLower(intent.Name) + ": " + t.Title
-							break
-						}
-					}
-				}
-			}
 			taskList = append(taskList, t)
 		}
 		if taskList == nil {
@@ -376,7 +364,7 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 	db.Exec(`UPDATE claude_tasks SET status=?, intent=?, started_at=? WHERE id=?`,
 		status, cfg.Intent, now, cfg.TaskID)
 	bus.Publish(Event{Type: "claude:task", Data: map[string]any{
-		"id": cfg.TaskID, "status": status,
+		"id": cfg.TaskID, "status": status, "intent": cfg.Intent, "repoPath": cfg.RepoPath,
 	}})
 
 	log.Printf("cmdr: task %d launched (session %s, target %s, intent %q)", cfg.TaskID, sessionName, target, cfg.Intent)
