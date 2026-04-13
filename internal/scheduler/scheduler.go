@@ -47,10 +47,10 @@ func (s *Scheduler) register(db *sql.DB, hooks Hooks) {
 			Fn:          tasks.SyncCommits(db, hooks.OnCommitsSync),
 		},
 		{
-			Name:        "prune-commits",
-			Description: "Delete commits older than 2 weeks",
+			Name:        "prune",
+			Description: "Clean up stale commits, tasks, and delegations",
 			Schedule:    "0 0 3 * * *", // daily at 3am
-			Fn:          tasks.PruneCommits(db),
+			Fn:          tasks.Prune(db),
 		},
 		{
 			Name:        "distill",

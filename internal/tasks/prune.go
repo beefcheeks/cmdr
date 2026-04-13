@@ -5,9 +5,9 @@ import (
 	"log"
 )
 
-// PruneCommits returns a task function that deletes commits older than 2 weeks
-// and cleans up orphaned review data and stale Claude tasks.
-func PruneCommits(db *sql.DB) func() error {
+// Prune returns a task function that cleans up stale data: old commits,
+// orphaned reviews, terminal tasks, stuck headless tasks, and inactive delegations.
+func Prune(db *sql.DB) func() error {
 	return func() error {
 		result, err := db.Exec(`DELETE FROM commits WHERE committed_at < datetime('now', '-14 days')`)
 		if err != nil {
