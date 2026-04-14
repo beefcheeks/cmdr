@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -265,7 +267,8 @@ func initCmd() *cobra.Command {
 }
 
 func installEnlistCommand(path string) error {
-	content := `Enlist a squad member to help with cross-repo work.
+	bin := cmdrBin()
+	content := fmt.Sprintf(`Enlist a squad member to help with cross-repo work.
 
 You are part of a squad — a group of repos managed by cmdr that can collaborate on cross-repo work.
 
@@ -280,24 +283,34 @@ When your current task requires changes in another repository that is part of yo
 
 Run the cmdr CLI to dispatch work to a squad member:
 
-` + "```bash" + `
-cmdr enlist --squad {squad-name} --from {your-alias} --to {target-alias} \
+`+"```bash"+`
+%s enlist --squad {squad-name} --from {your-alias} --to {target-alias} \
   --summary "Brief description of what you need" \
   --details "Full specification — be precise about interfaces, types, behavior"
-` + "```" + `
+`+"```"+`
 
 Cmdr will validate the squad, create a branch, and launch a Claude session in the target repo.
 
 After dispatching, continue working on parts of your task that don't depend on the enlisted work. You will be automatically notified when the enlistment is complete.
-`
+`, bin)
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
+func cmdrBin() string {
+	if p, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			return resolved
+		}
+		return p
+	}
+	return "cmdr"
+}
+
 func mergeHooks(path string) error {
-	// Hooks cmdr needs installed
+	bin := cmdrBin()
 	cmdrHooks := map[string]string{
-		"SessionStart":     `cmdr context --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`,
-		"UserPromptSubmit": `cmdr check-delegations --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`,
+		"SessionStart":     fmt.Sprintf(`%s context --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
+		"UserPromptSubmit": fmt.Sprintf(`%s check-delegations --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
 	}
 
 	// Read existing settings if present
@@ -446,6 +459,7 @@ func enlistCmd() *cobra.Command {
 				}
 				fmt.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)\n", taskID, squad, from, to)
 				fmt.Printf("cmdr: branch %s, session %s:%s\n", branchName, to, windowName)
+				notifyDaemon(squad, taskID)
 				return nil
 			}
 
@@ -456,6 +470,7 @@ func enlistCmd() *cobra.Command {
 
 			fmt.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)\n", taskID, squad, from, to)
 			fmt.Printf("cmdr: branch %s, session %s:%s\n", branchName, sessionName, windowName)
+			notifyDaemon(squad, taskID)
 			return nil
 		},
 	}
@@ -465,6 +480,18 @@ func enlistCmd() *cobra.Command {
 	cmd.Flags().StringVar(&summary, "summary", "", "Brief description of what you need")
 	cmd.Flags().StringVar(&details, "details", "", "Full specification")
 	return cmd
+}
+
+// notifyDaemon publishes an SSE event via the daemon so the frontend updates in real time.
+func notifyDaemon(squad string, taskID int) {
+	body, _ := json.Marshal(map[string]any{
+		"event": "delegation:update",
+		"data":  map[string]any{"squad": squad, "taskId": taskID, "status": "running"},
+	})
+	resp, err := http.Post("http://127.0.0.1:7369/api/notify", "application/json", bytes.NewReader(body))
+	if err == nil {
+		resp.Body.Close()
+	}
 }
 
 // findSessionForRepo finds an existing tmux session that has a pane in the given directory.

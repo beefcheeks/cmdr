@@ -33,6 +33,12 @@ export function initDelegationStore() {
 		fetchSummaries();
 	});
 
+	// Also refetch on any task status change — catches CLI-created delegations
+	// that bypass the API (e.g. cmdr enlist from a Claude session)
+	events.on('claude:task', () => {
+		fetchSummaries();
+	});
+
 	connection.subscribe((c) => {
 		if (c.connected) fetchSummaries();
 	});

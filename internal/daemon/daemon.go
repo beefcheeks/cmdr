@@ -269,6 +269,9 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/brew/outdated", handleBrewOutdated())
 	mux.HandleFunc("/api/brew/upgrade", handleBrewUpgrade(bus))
 
+	// Notifications (CLI → daemon SSE bridge)
+	mux.HandleFunc("/api/notify", handleNotify(bus))
+
 	// Code + Images (directive composer)
 	mux.HandleFunc("/api/code/files", handleCodeFiles())
 	mux.HandleFunc("/api/code/snippet", handleCodeSnippet())
