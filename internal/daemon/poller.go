@@ -486,7 +486,7 @@ func isPROpen(repoPath, prUrl string) bool {
 	cmd.Dir = repoPath
 	out, err := cmd.Output()
 	if err != nil {
-		return false
+		return true // assume open on error to avoid false "done" transitions
 	}
 	return strings.TrimSpace(string(out)) == "OPEN"
 }
