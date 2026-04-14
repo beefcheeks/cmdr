@@ -430,9 +430,8 @@ func enlistCmd() *cobra.Command {
 				return fmt.Errorf("creating branch: %s", strings.TrimSpace(string(out)))
 			}
 
-			// Create debrief directory and append path to prompt
-			home, _ := os.UserHomeDir()
-			debriefDir := filepath.Join(home, ".cmdr", "squads", squad)
+			// Debrief path in /tmp — transient, captured by poller then deleted
+			debriefDir := filepath.Join(os.TempDir(), "cmdr")
 			os.MkdirAll(debriefDir, 0o700)
 			debriefPath := filepath.Join(debriefDir, fmt.Sprintf("debrief-%d.md", taskID))
 			prompt += fmt.Sprintf("\n\n---\n\nDEBRIEF_PATH: %s", debriefPath)

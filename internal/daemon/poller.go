@@ -349,10 +349,11 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 			if existingResult != "" {
 				continue // debrief already captured
 			}
-			if debrief := scrapeDebrief(t.id); debrief != "" {
+			if debriefPath, debrief := scrapeDebrief(t.id); debrief != "" {
 				now := time.Now().Format(time.RFC3339)
 				db.Exec(`UPDATE claude_tasks SET status='completed', result=?, completed_at=? WHERE id=?`,
 					debrief, now, t.id)
+				os.Remove(debriefPath) // clean up after capture
 				bus.Publish(Event{Type: "claude:task", Data: map[string]any{
 					"id": t.id, "status": "completed",
 				}})
@@ -546,22 +547,15 @@ func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) string {
 	return string(data)
 }
 
-// scrapeDebrief checks if a delegation debrief file exists at ~/.cmdr/squads/{squad}/debrief-{taskID}.md.
-func scrapeDebrief(taskID int) string {
-	home, err := os.UserHomeDir()
+// scrapeDebrief checks if a delegation debrief file exists at /tmp/cmdr/debrief-{taskID}.md.
+// Returns the file path and contents, or empty strings if not found.
+func scrapeDebrief(taskID int) (string, string) {
+	path := filepath.Join(os.TempDir(), "cmdr", fmt.Sprintf("debrief-%d.md", taskID))
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return ""
+		return "", ""
 	}
-	// Glob for the debrief file across all squads (task ID is unique)
-	matches, _ := filepath.Glob(filepath.Join(home, ".cmdr", "squads", "*", fmt.Sprintf("debrief-%d.md", taskID)))
-	if len(matches) == 0 {
-		return ""
-	}
-	data, err := os.ReadFile(matches[0])
-	if err != nil {
-		return ""
-	}
-	return string(data)
+	return path, string(data)
 }
 
 // publishCommitWatermark sends the latest commit ID so the frontend can detect staleness.
