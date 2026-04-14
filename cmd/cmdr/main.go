@@ -44,7 +44,7 @@ func main() {
 	root.AddCommand(contextCmd())
 	root.AddCommand(initCmd())
 	root.AddCommand(enlistCmd())
-	root.AddCommand(checkDelegationsCmd())
+	root.AddCommand(missionsCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -310,7 +310,7 @@ func mergeHooks(path string) error {
 	bin := cmdrBin()
 	cmdrHooks := map[string]string{
 		"SessionStart":     fmt.Sprintf(`%s context --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
-		"UserPromptSubmit": fmt.Sprintf(`%s check-delegations --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
+		"UserPromptSubmit": fmt.Sprintf(`%s missions --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
 	}
 
 	// Read existing settings if present
@@ -519,11 +519,11 @@ func findSessionForRepo(repoPath string) string {
 	return ""
 }
 
-func checkDelegationsCmd() *cobra.Command {
+func missionsCmd() *cobra.Command {
 	var repoPath string
 	cmd := &cobra.Command{
-		Use:   "check-delegations",
-		Short: "Check for completed delegations (UserPromptSubmit hook)",
+		Use:   "missions",
+		Short: "Check squad mission status (UserPromptSubmit hook)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if repoPath == "" {
 				var err error
