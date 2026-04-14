@@ -162,8 +162,7 @@ func migrate(d *sql.DB) error {
 		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN claude_session_id TEXT NOT NULL DEFAULT ''`)
 	}
 
-	// Clear stale titles on directives (now derived on read)
-	d.Exec(`UPDATE claude_tasks SET title='' WHERE type='directive'`)
+	// (removed: was clearing directive titles on every startup, now titles are persisted on write)
 
 	// Clean up unused drafts table if it exists
 	d.Exec(`DROP TABLE IF EXISTS drafts`)
