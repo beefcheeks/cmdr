@@ -341,6 +341,33 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 			}
 		}
 
+		// Delegation tasks: capture debrief file as completion signal.
+		// Similar to ADR capture — the debrief is the deliverable.
+		if t.taskType == "delegation" {
+			var existingResult string
+			db.QueryRow(`SELECT COALESCE(result, '') FROM claude_tasks WHERE id=?`, t.id).Scan(&existingResult)
+			if existingResult != "" {
+				continue // debrief already captured
+			}
+			if debrief := scrapeDebrief(t.id); debrief != "" {
+				now := time.Now().Format(time.RFC3339)
+				db.Exec(`UPDATE claude_tasks SET status='completed', result=?, completed_at=? WHERE id=?`,
+					debrief, now, t.id)
+				bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+					"id": t.id, "status": "completed",
+				}})
+				var squadName string
+				db.QueryRow(`SELECT squad FROM delegations WHERE task_id = ?`, t.id).Scan(&squadName)
+				if squadName != "" {
+					bus.Publish(Event{Type: "delegation:update", Data: map[string]any{
+						"squad": squadName, "taskId": t.id, "status": "completed",
+					}})
+				}
+				log.Printf("cmdr: task %d completed (debrief captured)", t.id)
+				continue
+			}
+		}
+
 		// Scrape for PR URL if this task is expected to produce one:
 		// - refactoring/implementing statuses always produce PRs
 		// - running tasks check intent-level flag, but NOT during design phase
@@ -513,6 +540,24 @@ func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) string {
 		return ""
 	}
 	data, err := os.ReadFile(filepath.Join(docsDir, latestName))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// scrapeDebrief checks if a delegation debrief file exists at ~/.cmdr/squads/{squad}/debrief-{taskID}.md.
+func scrapeDebrief(taskID int) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	// Glob for the debrief file across all squads (task ID is unique)
+	matches, _ := filepath.Glob(filepath.Join(home, ".cmdr", "squads", "*", fmt.Sprintf("debrief-%d.md", taskID)))
+	if len(matches) == 0 {
+		return ""
+	}
+	data, err := os.ReadFile(matches[0])
 	if err != nil {
 		return ""
 	}

@@ -430,6 +430,13 @@ func enlistCmd() *cobra.Command {
 				return fmt.Errorf("creating branch: %s", strings.TrimSpace(string(out)))
 			}
 
+			// Create debrief directory and append path to prompt
+			home, _ := os.UserHomeDir()
+			debriefDir := filepath.Join(home, ".cmdr", "squads", squad)
+			os.MkdirAll(debriefDir, 0o700)
+			debriefPath := filepath.Join(debriefDir, fmt.Sprintf("debrief-%d.md", taskID))
+			prompt += fmt.Sprintf("\n\n---\n\nDEBRIEF_PATH: %s", debriefPath)
+
 			// Build claude command with delegation system prompt
 			escapedPrompt := strings.ReplaceAll(prompt, "'", "'\\''")
 			claudeCmd := fmt.Sprintf("claude --name 'cmdr-task-%d'", taskID)
@@ -569,6 +576,14 @@ func checkDelegationsCmd() *cobra.Command {
 				msg := fmt.Sprintf("Enlistment complete: %s finished", toAlias)
 				if title != "" {
 					msg += fmt.Sprintf(" '%s'", title)
+				}
+				if result != "" {
+					// Include the debrief summary (truncated for context injection)
+					debrief := result
+					if len(debrief) > 500 {
+						debrief = debrief[:500] + "..."
+					}
+					msg += fmt.Sprintf("\n\nDebrief:\n%s", debrief)
 				}
 				notifications = append(notifications, msg)
 			}

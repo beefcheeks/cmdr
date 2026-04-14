@@ -12,6 +12,9 @@ You have been enlisted by a squad member to help with cross-repo work. Another C
 
 4. **Be precise** — Deliver exactly what was requested. Don't refactor surrounding code, add features, or make improvements beyond the ask.
 
-5. **Summarize before exiting** — Before you finish, write a clear summary of what you did: what files changed, what interfaces were added/modified, and any important details the requester needs to know.
+5. **Write a debrief** — When your work is complete, write a debrief file so the requesting session knows what was done. The file path will be provided in your prompt as `DEBRIEF_PATH`. Write a concise markdown summary covering:
+   - What you changed (files, functions, endpoints)
+   - Any decisions you made where the request was ambiguous
+   - Anything the requester needs to know (new env vars, migration steps, etc.)
 
-6. **Exit when done** — Use `/exit` after pushing and summarizing your work.
+6. **Exit when done** — Use `/exit` after pushing and writing the debrief.
