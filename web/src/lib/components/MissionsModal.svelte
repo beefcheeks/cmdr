@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { X, ArrowRight, GitBranch, Loader2, CircleCheck, CircleX } from 'lucide-svelte';
 	import { getDelegations, type Delegation } from '$lib/api';
+	import { renderMarkdown } from '$lib/markdown';
 	import { events } from '$lib/events';
 	import { timeAgo } from '$lib/timeStore';
 
@@ -44,15 +45,6 @@
 			onclose();
 		}
 	}
-
-	let expandedResults: Set<number> = $state(new Set());
-
-	function toggleResult(id: number) {
-		const next = new Set(expandedResults);
-		if (next.has(id)) next.delete(id);
-		else next.add(id);
-		expandedResults = next;
-	}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -89,27 +81,45 @@
 			{#if activeDelegations.length > 0}
 				<div class="mb-6">
 					<h3 class="font-display text-xs font-bold uppercase tracking-widest text-run-500 mb-3">Active</h3>
-					<div class="flex flex-col gap-2">
+					<div class="flex flex-col gap-3">
 						{#each activeDelegations as d}
-							<div class="bg-bourbon-900/50 border border-bourbon-800 rounded-lg px-4 py-3">
-								<div class="flex items-center justify-between">
+							<div class="border border-bourbon-800 rounded-lg overflow-hidden">
+								<!-- Header bar -->
+								<div class="flex items-center justify-between px-4 py-2.5 bg-bourbon-950/50">
 									<div class="flex items-center gap-2">
 										<Loader2 size={14} class="text-run-400 animate-spin" />
 										<span class="text-xs font-mono text-bourbon-300">{d.delegationFrom}</span>
 										<ArrowRight size={10} class="text-bourbon-600" />
 										<span class="text-xs font-mono text-bourbon-300">{d.delegationTo}</span>
 									</div>
-									<span class="text-[10px] text-bourbon-700">{$timeAgo(d.createdAt)}</span>
+									<div class="flex items-center gap-3">
+										{#if d.branch}
+											<span class="flex items-center gap-1 text-[10px] font-mono text-cmd-400">
+												<GitBranch size={10} />
+												{d.branch}
+											</span>
+										{/if}
+										<span class="text-[10px] text-bourbon-700">{$timeAgo(d.createdAt)}</span>
+									</div>
 								</div>
-								{#if d.title || d.summary}
-									<div class="mt-1.5 text-sm text-bourbon-400">{d.title || d.summary}</div>
-								{/if}
-								{#if d.branch}
-									<div class="mt-1.5 flex items-center gap-1 text-[10px] font-mono text-cmd-400">
-										<GitBranch size={10} />
-										{d.branch}
+
+								<!-- Leader ask -->
+								{#if d.summary}
+									<div class="px-4 py-3 border-t border-bourbon-800/50">
+										<div class="flex items-start gap-2.5">
+											<span class="font-mono text-[10px] text-run-500 font-bold shrink-0 pt-0.5">{d.delegationFrom}</span>
+											<p class="text-sm text-bourbon-300">{d.summary}</p>
+										</div>
 									</div>
 								{/if}
+
+								<!-- Waiting indicator -->
+								<div class="px-4 py-2.5 border-t border-bourbon-800/50 bg-bourbon-950/30">
+									<div class="flex items-center gap-2.5">
+										<span class="font-mono text-[10px] text-bourbon-600 font-bold shrink-0">{d.delegationTo}</span>
+										<span class="text-xs text-bourbon-600 italic">working...</span>
+									</div>
+								</div>
 							</div>
 						{/each}
 					</div>
@@ -120,10 +130,11 @@
 			{#if completedDelegations.length > 0}
 				<div>
 					<h3 class="font-display text-xs font-bold uppercase tracking-widest text-bourbon-500 mb-3">Completed</h3>
-					<div class="flex flex-col gap-2">
+					<div class="flex flex-col gap-3">
 						{#each completedDelegations as d}
-							<div class="bg-bourbon-950/30 border border-bourbon-800 rounded-lg px-4 py-3">
-								<div class="flex items-center justify-between">
+							<div class="border border-bourbon-800 rounded-lg overflow-hidden">
+								<!-- Header bar -->
+								<div class="flex items-center justify-between px-4 py-2.5 bg-bourbon-950/50">
 									<div class="flex items-center gap-2">
 										{#if d.status === 'failed'}
 											<CircleX size={14} class="text-red-400" />
@@ -134,29 +145,52 @@
 										<ArrowRight size={10} class="text-bourbon-700" />
 										<span class="text-xs font-mono text-bourbon-400">{d.delegationTo}</span>
 									</div>
-									<span class="text-[10px] text-bourbon-700">{$timeAgo(d.completedAt || d.createdAt)}</span>
+									<div class="flex items-center gap-3">
+										{#if d.branch}
+											<span class="flex items-center gap-1 text-[10px] font-mono text-bourbon-600">
+												<GitBranch size={10} />
+												{d.branch}
+											</span>
+										{/if}
+										<span class="text-[10px] text-bourbon-700">{$timeAgo(d.completedAt || d.createdAt)}</span>
+									</div>
 								</div>
-								{#if d.title || d.summary}
-									<div class="mt-1.5 text-sm text-bourbon-500">{d.title || d.summary}</div>
-								{/if}
-								{#if d.branch}
-									<div class="mt-1 flex items-center gap-1 text-[10px] font-mono text-bourbon-600">
-										<GitBranch size={10} />
-										{d.branch}
+
+								<!-- Leader ask -->
+								{#if d.summary}
+									<div class="px-4 py-3 border-t border-bourbon-800/50">
+										<div class="flex items-start gap-2.5">
+											<span class="font-mono text-[10px] text-run-500/70 font-bold shrink-0 pt-0.5">{d.delegationFrom}</span>
+											<p class="text-sm text-bourbon-400">{d.summary}</p>
+										</div>
 									</div>
 								{/if}
+
+								<!-- Agent debrief -->
 								{#if d.result}
-									<button
-										onclick={() => toggleResult(d.id)}
-										class="mt-2 text-[10px] font-mono text-cmd-400 hover:text-cmd-300 cursor-pointer"
-									>
-										{expandedResults.has(d.id) ? 'hide result' : 'show result'}
-									</button>
-									{#if expandedResults.has(d.id)}
-										<div class="mt-2 text-xs text-bourbon-400 bg-bourbon-900/50 border border-bourbon-800 rounded px-3 py-2 whitespace-pre-wrap font-mono">
-											{d.result}
+									<div class="px-4 py-3 border-t border-bourbon-800/50 bg-bourbon-950/30">
+										<div class="flex items-start gap-2.5">
+											<span class="font-mono text-[10px] text-cmd-400/70 font-bold shrink-0 pt-0.5">{d.delegationTo}</span>
+											<div class="text-sm text-bourbon-400 overflow-hidden
+												prose prose-invert prose-sm max-w-none
+												prose-headings:text-bourbon-300 prose-headings:font-display prose-headings:tracking-wider prose-headings:text-xs
+												prose-p:text-bourbon-400 prose-p:my-1
+												prose-strong:text-bourbon-300
+												prose-code:text-run-400 prose-code:bg-bourbon-800/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+												prose-pre:bg-bourbon-900 prose-pre:border prose-pre:border-bourbon-800
+												prose-li:text-bourbon-400 prose-li:my-0.5
+												prose-ul:my-1 prose-ol:my-1">
+												{@html renderMarkdown(d.result)}
+											</div>
 										</div>
-									{/if}
+									</div>
+								{:else if d.status === 'completed'}
+									<div class="px-4 py-2.5 border-t border-bourbon-800/50 bg-bourbon-950/30">
+										<div class="flex items-center gap-2.5">
+											<span class="font-mono text-[10px] text-bourbon-600 font-bold shrink-0">{d.delegationTo}</span>
+											<span class="text-xs text-bourbon-600 italic">completed (no debrief)</span>
+										</div>
+									</div>
 								{/if}
 							</div>
 						{/each}
