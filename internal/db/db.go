@@ -2,12 +2,19 @@ package db
 
 import (
 	"database/sql"
+	"embed"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
+
+//go:embed migrations/*.sql
+var migrationFiles embed.FS
 
 // Open creates or opens the cmdr SQLite database at ~/.cmdr/cmdr.db.
 func Open() (*sql.DB, error) {
@@ -27,25 +34,22 @@ func Open() (*sql.DB, error) {
 		return nil, fmt.Errorf("db: open: %w", err)
 	}
 
-	if err := migrate(d); err != nil {
+	if err := ensureSchema(d); err != nil {
 		d.Close()
-		return nil, fmt.Errorf("db: migrate: %w", err)
+		return nil, fmt.Errorf("db: schema: %w", err)
+	}
+
+	if err := runMigrations(d); err != nil {
+		d.Close()
+		return nil, fmt.Errorf("db: migrations: %w", err)
 	}
 
 	return d, nil
 }
 
-func migrate(d *sql.DB) error {
-	// Check if we need to migrate from old schema (has 'owner' column)
-	var hasOwner bool
-	row := d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name='owner'`)
-	row.Scan(&hasOwner)
-	if hasOwner {
-		// Drop old tables and recreate
-		d.Exec(`DROP TABLE IF EXISTS commits`)
-		d.Exec(`DROP TABLE IF EXISTS repos`)
-	}
-
+// ensureSchema creates tables and indexes if they don't exist.
+// This is the canonical schema — the source of truth for what the DB should look like.
+func ensureSchema(d *sql.DB) error {
 	_, err := d.Exec(`
 		CREATE TABLE IF NOT EXISTS repos (
 			id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,7 +58,10 @@ func migrate(d *sql.DB) error {
 			remote_url      TEXT NOT NULL DEFAULT '',
 			default_branch  TEXT NOT NULL DEFAULT 'main',
 			last_synced_at  DATETIME,
-			created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+			created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+			squad           TEXT NOT NULL DEFAULT '',
+			squad_alias     TEXT NOT NULL DEFAULT '',
+			monitor         INTEGER NOT NULL DEFAULT 1
 		);
 
 		CREATE TABLE IF NOT EXISTS commits (
@@ -66,25 +73,14 @@ func migrate(d *sql.DB) error {
 			committed_at  DATETIME NOT NULL,
 			url           TEXT NOT NULL DEFAULT '',
 			seen          BOOLEAN NOT NULL DEFAULT 0,
+			flagged       BOOLEAN NOT NULL DEFAULT 0,
 			created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(repo_id, sha)
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_commits_repo_date ON commits(repo_id, committed_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_commits_seen ON commits(seen, committed_at DESC);
-	`)
-	if err != nil {
-		return err
-	}
 
-	// Add flagged column if missing
-	var hasFlagged bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('commits') WHERE name='flagged'`).Scan(&hasFlagged)
-	if !hasFlagged {
-		d.Exec(`ALTER TABLE commits ADD COLUMN flagged BOOLEAN NOT NULL DEFAULT 0`)
-	}
-
-	_, err = d.Exec(`
 		CREATE TABLE IF NOT EXISTS activity_buckets (
 			slot            INTEGER NOT NULL,
 			bucket          INTEGER NOT NULL,
@@ -110,132 +106,90 @@ func migrate(d *sql.DB) error {
 		);
 
 		CREATE TABLE IF NOT EXISTS claude_tasks (
-			id            INTEGER PRIMARY KEY AUTOINCREMENT,
-			type          TEXT NOT NULL DEFAULT 'review',
-			status        TEXT NOT NULL DEFAULT 'pending',
-			repo_path     TEXT NOT NULL,
-			commit_sha    TEXT NOT NULL DEFAULT '',
-			prompt        TEXT NOT NULL,
-			result        TEXT NOT NULL DEFAULT '',
-			error_msg     TEXT NOT NULL DEFAULT '',
-			created_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
-			started_at    DATETIME,
-			completed_at  DATETIME
+			id                INTEGER PRIMARY KEY AUTOINCREMENT,
+			type              TEXT NOT NULL DEFAULT 'review',
+			status            TEXT NOT NULL DEFAULT 'pending',
+			repo_path         TEXT NOT NULL,
+			commit_sha        TEXT NOT NULL DEFAULT '',
+			prompt            TEXT NOT NULL,
+			result            TEXT NOT NULL DEFAULT '',
+			error_msg         TEXT NOT NULL DEFAULT '',
+			title             TEXT NOT NULL DEFAULT '',
+			pr_url            TEXT NOT NULL DEFAULT '',
+			intent            TEXT NOT NULL DEFAULT '',
+			claude_session_id TEXT NOT NULL DEFAULT '',
+			refactored        INTEGER NOT NULL DEFAULT 0,
+			created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+			started_at        DATETIME,
+			completed_at      DATETIME,
+			-- vestigial delegation columns (kept for SQLite compat, data lives in delegations table)
+			squad             TEXT NOT NULL DEFAULT '',
+			delegation_from   TEXT NOT NULL DEFAULT '',
+			delegation_to     TEXT NOT NULL DEFAULT '',
+			notified          INTEGER NOT NULL DEFAULT 0
+		);
+
+		CREATE TABLE IF NOT EXISTS squads (
+			name       TEXT PRIMARY KEY,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS delegations (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id    INTEGER NOT NULL REFERENCES claude_tasks(id) ON DELETE CASCADE,
+			squad      TEXT NOT NULL,
+			from_alias TEXT NOT NULL,
+			to_alias   TEXT NOT NULL,
+			branch     TEXT NOT NULL DEFAULT '',
+			summary    TEXT NOT NULL DEFAULT '',
+			details    TEXT NOT NULL DEFAULT '',
+			notified   INTEGER NOT NULL DEFAULT 0,
+			UNIQUE(task_id)
+		);
+
+		CREATE TABLE IF NOT EXISTS migrations (
+			name       TEXT PRIMARY KEY,
+			applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		);
 	`)
-	if err != nil {
-		return err
+	return err
+}
+
+// runMigrations executes any .sql files in migrations/ that haven't been applied yet.
+// Files are sorted by name and run in order. Each runs once, tracked by the migrations table.
+func runMigrations(d *sql.DB) error {
+	entries, err := migrationFiles.ReadDir("migrations")
+	if err != nil || len(entries) == 0 {
+		return nil
 	}
 
-	// Add title column to claude_tasks if missing
-	var hasTitle bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='title'`).Scan(&hasTitle)
-	if !hasTitle {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN title TEXT NOT NULL DEFAULT ''`)
+	// Sort by filename for deterministic order
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
 	}
+	sort.Strings(names)
 
-	// Add pr_url column to claude_tasks if missing
-	var hasPrUrl bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='pr_url'`).Scan(&hasPrUrl)
-	if !hasPrUrl {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN pr_url TEXT NOT NULL DEFAULT ''`)
-	}
+	for _, name := range names {
+		var applied bool
+		d.QueryRow(`SELECT 1 FROM migrations WHERE name = ?`, name).Scan(&applied)
+		if applied {
+			continue
+		}
 
-	// Add refactored flag to claude_tasks if missing
-	var hasRefactored bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='refactored'`).Scan(&hasRefactored)
-	if !hasRefactored {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN refactored INTEGER NOT NULL DEFAULT 0`)
-	}
+		content, err := migrationFiles.ReadFile("migrations/" + name)
+		if err != nil {
+			return fmt.Errorf("read %s: %w", name, err)
+		}
 
-	// Add intent column to claude_tasks if missing
-	var hasIntent bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='intent'`).Scan(&hasIntent)
-	if !hasIntent {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN intent TEXT NOT NULL DEFAULT ''`)
-	}
+		if _, err := d.Exec(string(content)); err != nil {
+			return fmt.Errorf("run %s: %w", name, err)
+		}
 
-	// Add claude_session_id column to claude_tasks if missing (for --resume)
-	var hasSessionID bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='claude_session_id'`).Scan(&hasSessionID)
-	if !hasSessionID {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN claude_session_id TEXT NOT NULL DEFAULT ''`)
-	}
-
-	// (removed: was clearing directive titles on every startup, now titles are persisted on write)
-
-	// Clean up unused drafts table if it exists
-	d.Exec(`DROP TABLE IF EXISTS drafts`)
-
-	// Squads: persistent repo groupings for inter-Claude delegation
-	d.Exec(`CREATE TABLE IF NOT EXISTS squads (
-		name       TEXT PRIMARY KEY,
-		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-	)`)
-
-	// Add squad columns to repos if missing
-	var hasSquad bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name='squad'`).Scan(&hasSquad)
-	if !hasSquad {
-		d.Exec(`ALTER TABLE repos ADD COLUMN squad TEXT NOT NULL DEFAULT ''`)
-	}
-
-	var hasSquadAlias bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name='squad_alias'`).Scan(&hasSquadAlias)
-	if !hasSquadAlias {
-		d.Exec(`ALTER TABLE repos ADD COLUMN squad_alias TEXT NOT NULL DEFAULT ''`)
-	}
-
-	// Add monitor flag to repos (default 1 = commit syncing enabled)
-	var hasMonitor bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('repos') WHERE name='monitor'`).Scan(&hasMonitor)
-	if !hasMonitor {
-		d.Exec(`ALTER TABLE repos ADD COLUMN monitor INTEGER NOT NULL DEFAULT 1`)
-	}
-
-	// Vestigial delegation columns on claude_tasks (kept for SQLite compat, no longer written to)
-	var hasTaskSquad bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='squad'`).Scan(&hasTaskSquad)
-	if !hasTaskSquad {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN squad TEXT NOT NULL DEFAULT ''`)
-	}
-	var hasDelegationFrom bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='delegation_from'`).Scan(&hasDelegationFrom)
-	if !hasDelegationFrom {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN delegation_from TEXT NOT NULL DEFAULT ''`)
-	}
-	var hasDelegationTo bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='delegation_to'`).Scan(&hasDelegationTo)
-	if !hasDelegationTo {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN delegation_to TEXT NOT NULL DEFAULT ''`)
-	}
-	var hasNotified bool
-	d.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('claude_tasks') WHERE name='notified'`).Scan(&hasNotified)
-	if !hasNotified {
-		d.Exec(`ALTER TABLE claude_tasks ADD COLUMN notified INTEGER NOT NULL DEFAULT 0`)
-	}
-
-	// Delegations table (normalized from claude_tasks)
-	d.Exec(`CREATE TABLE IF NOT EXISTS delegations (
-		id         INTEGER PRIMARY KEY AUTOINCREMENT,
-		task_id    INTEGER NOT NULL REFERENCES claude_tasks(id) ON DELETE CASCADE,
-		squad      TEXT NOT NULL,
-		from_alias TEXT NOT NULL,
-		to_alias   TEXT NOT NULL,
-		branch     TEXT NOT NULL DEFAULT '',
-		summary    TEXT NOT NULL DEFAULT '',
-		details    TEXT NOT NULL DEFAULT '',
-		notified   INTEGER NOT NULL DEFAULT 0,
-		UNIQUE(task_id)
-	)`)
-
-	// Migrate existing delegation data from old columns to new table
-	var delegationsMigrated int
-	d.QueryRow(`SELECT COUNT(*) FROM delegations`).Scan(&delegationsMigrated)
-	if delegationsMigrated == 0 {
-		d.Exec(`INSERT OR IGNORE INTO delegations (task_id, squad, from_alias, to_alias, notified)
-			SELECT id, squad, delegation_from, delegation_to, notified
-			FROM claude_tasks WHERE type = 'delegation' AND squad != ''`)
+		d.Exec(`INSERT INTO migrations (name) VALUES (?)`, name)
+		log.Printf("cmdr: applied migration %s", name)
 	}
 
 	return nil
