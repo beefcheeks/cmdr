@@ -32,7 +32,12 @@ export function initSessionStore() {
 		sessionsLoaded.set(true);
 	});
 
-	events.on('claude:sessions', (data) => {
+	events.on('claude:sessions', (data: ClaudeSession[]) => {
 		claudeSessions.set(data);
+		// Signal native app (cmdr.app) about claude activity for menubar indicator
+		if ((window as any).webkit?.messageHandlers?.activity) {
+			const hasActive = data.some((s: ClaudeSession) => s.status === 'working');
+			(window as any).webkit.messageHandlers.activity.postMessage({ active: hasActive });
+		}
 	});
 }

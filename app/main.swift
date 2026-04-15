@@ -23,6 +23,7 @@ class TrackingContentView: NSView {
     var onMouseEnter: (() -> Void)?
     var onMouseExit: (() -> Void)?
     private var trackingArea: NSTrackingArea?
+    override var mouseDownCanMoveWindow: Bool { true }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -38,6 +39,16 @@ class TrackingContentView: NSView {
 
     override func mouseEntered(with event: NSEvent) { onMouseEnter?() }
     override func mouseExited(with event: NSEvent) { onMouseExit?() }
+
+    /// Intercept clicks in the top 22px (titlebar zone) so the container
+    /// handles them as window drags instead of the WKWebView consuming them.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let localPoint = convert(point, from: superview)
+        if localPoint.y >= bounds.height - 22 {
+            return self
+        }
+        return super.hitTest(point)
+    }
 }
 
 // MARK: - App Delegate
@@ -50,7 +61,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
     private var trafficLightButtons: [NSButton] = []
     private var menuBarIcon: NSImage?
     private var menuBarIconActive: NSImage?
-    private var activityTimer: Timer?
     private var isClaudeActive = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -58,7 +68,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         setupMenuBar()
         setupMainMenu()
         setupWindow()
-        startActivityPolling()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -84,16 +93,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
 
     // Handle messages from the webview
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "notify", let body = message.body as? [String: Any],
-              let title = body["title"] as? String else { return }
+        guard let body = message.body as? [String: Any] else { return }
 
-        let content = UNMutableNotificationContent()
-        content.title = title
-        if let subtitle = body["body"] as? String { content.body = subtitle }
-        content.sound = .default
+        switch message.name {
+        case "notify":
+            guard let title = body["title"] as? String else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            if let subtitle = body["body"] as? String { content.body = subtitle }
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request)
 
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
+        case "activity":
+            let active = body["active"] as? Bool ?? false
+            if active != isClaudeActive {
+                isClaudeActive = active
+                statusItem.button?.image = active ? menuBarIconActive : menuBarIcon
+            }
+
+        default:
+            break
+        }
     }
 
     // MARK: - WKUIDelegate (external links)
@@ -302,35 +323,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
-    // MARK: - Activity Polling
-
-    private func startActivityPolling() {
-        activityTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
-            self?.pollActivity()
-        }
-    }
-
-    private func pollActivity() {
-        guard let url = URL(string: "http://127.0.0.1:7369/api/claude/tasks") else { return }
-        URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
-            guard let self = self, let data = data,
-                  let tasks = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
-
-            let activeStatuses: Set<String> = ["running", "pending", "refactoring", "implementing"]
-            let hasActive = tasks.contains { task in
-                guard let status = task["status"] as? String else { return false }
-                return activeStatuses.contains(status)
-            }
-
-            DispatchQueue.main.async {
-                if hasActive != self.isClaudeActive {
-                    self.isClaudeActive = hasActive
-                    self.statusItem.button?.image = hasActive ? self.menuBarIconActive : self.menuBarIcon
-                }
-            }
-        }.resume()
-    }
-
     // MARK: - API Helpers
 
     private func fetchReposSync() -> [[String: Any]] {
@@ -414,8 +406,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMe
             });
             """, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         config.userContentController.addUserScript(noBackNav)
-        // Register message handler for native notifications
+        // Register message handlers for native bridge
         config.userContentController.add(self, name: "notify")
+        config.userContentController.add(self, name: "activity")
         webView = WKWebView(frame: container.bounds, configuration: config)
         webView.uiDelegate = self
         webView.customUserAgent = "cmdr-app"
