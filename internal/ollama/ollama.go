@@ -18,8 +18,9 @@ var (
 // Uses tool calling to get structured output (just the title, no preamble).
 func Summarize(ctx context.Context, content string) (string, error) {
 	reqBody := chatRequest{
-		Model:  model,
-		Stream: false,
+		Model:   model,
+		Stream:  false,
+		Options: map[string]any{"think": false},
 		Messages: []message{
 			{
 				Role:    "system",
@@ -90,10 +91,11 @@ func Summarize(ctx context.Context, content string) (string, error) {
 // --- Request/Response types ---
 
 type chatRequest struct {
-	Model    string    `json:"model"`
-	Stream   bool      `json:"stream"`
-	Messages []message `json:"messages"`
-	Tools    []tool    `json:"tools"`
+	Model    string         `json:"model"`
+	Stream   bool           `json:"stream"`
+	Messages []message      `json:"messages"`
+	Tools    []tool         `json:"tools,omitempty"`
+	Options  map[string]any `json:"options,omitempty"`
 }
 
 type message struct {

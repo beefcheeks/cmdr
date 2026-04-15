@@ -641,7 +641,7 @@ func enhanceTitle(db *sql.DB, bus *EventBus, taskID int, content string) {
 		ollamaSem <- struct{}{}
 		defer func() { <-ollamaSem }()
 
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 		defer cancel()
 
 		title, err := ollama.Summarize(ctx, content)
