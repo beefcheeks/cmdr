@@ -92,3 +92,4 @@ Key rules:
 | `/api/repos/sync` | POST | Trigger `git fetch` + commit sync for all monitored repos |
 | `/api/repos/pull` | POST | Fast-forward/rebase local branch to origin `{"repoPath": "..."}` |
 | `/api/editor/open` | POST | Open file in nvim via tmux `{"repoPath", "file", "line"}` |
+| `/api/squads/enlist` | POST | Enlist a squad member `{"squad", "from", "to", "summary", "details"}` |

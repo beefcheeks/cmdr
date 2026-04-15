@@ -249,8 +249,8 @@ func findAncestorPane(pid int, ppidMap map[int]int, shellPIDs map[int]*claudePan
 //   running/refactoring → scrape pane for PR → resolved; or window gone → completed
 //   resolved → PR closed + worktree gone → completed
 //
-// The only differences are the window name and worktree name conventions,
-// which are derived from task type and ID via taskWindowName/taskWorktreeInfo.
+// Window names are derived from intent via taskWindowName.
+// Worktree names are persisted on the task row at launch time.
 
 // taskWindowName returns the tmux window name for a task based on its type.
 func taskWindowName(taskType, intent, status string, taskID int) string {
@@ -275,7 +275,7 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 	// Exclude headless tasks (review, ask) — they run via claude -p, not tmux windows,
 	// so window liveness checks would falsely mark them as completed.
 	rows, err := db.Query(`
-		SELECT id, type, repo_path, COALESCE(intent, ''), status, COALESCE(started_at, created_at)
+		SELECT id, type, repo_path, COALESCE(intent, ''), worktree, status, COALESCE(started_at, created_at)
 		FROM claude_tasks
 		WHERE status IN ('running', 'refactoring', 'implementing')
 		  AND NOT (type IN ('review', 'ask') AND status = 'running')
@@ -300,13 +300,14 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 		taskType  string
 		repoPath  string
 		intent    string
+		worktree  string
 		status    string
 		startedAt string
 	}
 	var tasks []task
 	for rows.Next() {
 		var t task
-		if err := rows.Scan(&t.id, &t.taskType, &t.repoPath, &t.intent, &t.status, &t.startedAt); err != nil {
+		if err := rows.Scan(&t.id, &t.taskType, &t.repoPath, &t.intent, &t.worktree, &t.status, &t.startedAt); err != nil {
 			continue
 		}
 		tasks = append(tasks, t)
@@ -324,8 +325,7 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 			var existingResult string
 			db.QueryRow(`SELECT COALESCE(result, '') FROM claude_tasks WHERE id=?`, t.id).Scan(&existingResult)
 			if existingResult == "" {
-				worktreeName, _ := taskWorktreeInfo(t.taskType, t.intent, t.status, t.id)
-				if adr := scrapeADRFromWorktree(t.repoPath, worktreeName, t.startedAt); adr != "" {
+				if adr := scrapeADRFromWorktree(t.repoPath, t.worktree, t.startedAt); adr != "" {
 					now := time.Now().Format(time.RFC3339)
 					title := extractTitle(adr)
 					db.Exec(`UPDATE claude_tasks SET status='completed', result=?, title=?, completed_at=? WHERE id=?`,
@@ -435,7 +435,7 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, tmuxSessions []tmux.Session) {
 // checkResolvedTasks monitors all tasks in "resolved" status.
 // When the PR is merged/closed AND the worktree is gone, marks completed.
 func checkResolvedTasks(db *sql.DB, bus *EventBus) {
-	rows, err := db.Query(`SELECT id, type, repo_path, COALESCE(intent, ''), COALESCE(pr_url, '') FROM claude_tasks WHERE status = 'resolved'`)
+	rows, err := db.Query(`SELECT id, repo_path, worktree, COALESCE(pr_url, '') FROM claude_tasks WHERE status = 'resolved'`)
 	if err != nil {
 		return
 	}
@@ -443,23 +443,21 @@ func checkResolvedTasks(db *sql.DB, bus *EventBus) {
 
 	type task struct {
 		id       int
-		taskType string
 		repoPath string
-		intent   string
+		worktree string
 		prUrl    string
 	}
 	var tasks []task
 	for rows.Next() {
 		var t task
-		if err := rows.Scan(&t.id, &t.taskType, &t.repoPath, &t.intent, &t.prUrl); err != nil {
+		if err := rows.Scan(&t.id, &t.repoPath, &t.worktree, &t.prUrl); err != nil {
 			continue
 		}
 		tasks = append(tasks, t)
 	}
 
 	for _, t := range tasks {
-		worktreeName, _ := taskWorktreeInfo(t.taskType, t.intent, "resolved", t.id)
-		worktreeExists := worktreeAlive(t.repoPath, worktreeName)
+		worktreeExists := t.worktree != "" && worktreeAlive(t.repoPath, t.worktree)
 		prOpen := t.prUrl != "" && isPROpen(t.repoPath, t.prUrl)
 
 		if !prOpen && !worktreeExists {

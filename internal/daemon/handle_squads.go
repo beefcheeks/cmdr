@@ -3,9 +3,13 @@ package daemon
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/mikehu/cmdr/internal/tasks"
 )
@@ -324,5 +328,118 @@ func handleDelegationSummary(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(summaries)
+	}
+}
+
+func handleEnlist(db *sql.DB, bus *EventBus) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+
+		var body struct {
+			Squad   string `json:"squad"`
+			From    string `json:"from"`
+			To      string `json:"to"`
+			Summary string `json:"summary"`
+			Details string `json:"details"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
+			return
+		}
+		if body.Squad == "" || body.From == "" || body.To == "" || body.Summary == "" {
+			http.Error(w, `{"error":"squad, from, to, and summary are required"}`, http.StatusBadRequest)
+			return
+		}
+
+		// Validate squad exists
+		var squadExists bool
+		db.QueryRow(`SELECT COUNT(*) FROM squads WHERE name = ?`, body.Squad).Scan(&squadExists)
+		if !squadExists {
+			http.Error(w, fmt.Sprintf(`{"error":"squad %q does not exist"}`, body.Squad), http.StatusNotFound)
+			return
+		}
+
+		// Resolve target alias to repo path
+		var targetPath string
+		if err := db.QueryRow(`SELECT path FROM repos WHERE squad = ? AND squad_alias = ?`, body.Squad, body.To).Scan(&targetPath); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":"squad member %q not found in squad %q"}`, body.To, body.Squad), http.StatusNotFound)
+			return
+		}
+
+		// Check no running delegation already targets this repo
+		var running int
+		db.QueryRow(`SELECT COUNT(*) FROM claude_tasks WHERE type = 'delegation' AND repo_path = ? AND status = 'running'`, targetPath).Scan(&running)
+		if running > 0 {
+			http.Error(w, fmt.Sprintf(`{"error":"%s already has an active delegation"}`, body.To), http.StatusConflict)
+			return
+		}
+
+		// Create task row
+		prompt := fmt.Sprintf("## Enlistment from %s\n\n**Summary:** %s\n\n%s", body.From, body.Summary, body.Details)
+		now := time.Now().Format(time.RFC3339)
+		taskResult, err := db.Exec(
+			`INSERT INTO claude_tasks (type, status, repo_path, prompt, intent, created_at, started_at)
+			 VALUES ('delegation', 'pending', ?, ?, 'delegation', ?, ?)`,
+			targetPath, prompt, now, now,
+		)
+		if err != nil {
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+		taskID64, _ := taskResult.LastInsertId()
+		taskID := int(taskID64)
+
+		// Insert delegation details
+		branchName := fmt.Sprintf("squad/%s/%d", body.Squad, taskID)
+		if _, err := db.Exec(
+			`INSERT INTO delegations (task_id, squad, from_alias, to_alias, branch, summary, details)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			taskID, body.Squad, body.From, body.To, branchName, body.Summary, body.Details,
+		); err != nil {
+			db.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+
+		// Debrief path in /tmp — transient, captured by poller then deleted
+		debriefDir := filepath.Join(os.TempDir(), "cmdr")
+		os.MkdirAll(debriefDir, 0o700)
+		debriefPath := filepath.Join(debriefDir, fmt.Sprintf("debrief-%d.md", taskID))
+		prompt += fmt.Sprintf("\n\n---\n\nDEBRIEF_PATH: %s", debriefPath)
+
+		// Launch via unified launchTask — gets worktree, tmux session, system prompt
+		res, err := launchTask(db, bus, TaskLaunchConfig{
+			TaskID:         taskID,
+			Intent:         "delegation",
+			UserPrompt:     prompt,
+			RepoPath:       targetPath,
+			WindowPrefix:   "enlist",
+			WorktreePrefix: fmt.Sprintf("enlist-%s", body.Squad),
+		})
+		if err != nil {
+			db.Exec(`DELETE FROM delegations WHERE task_id = ?`, taskID)
+			db.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
+			log.Printf("cmdr: enlist launch failed: %v", err)
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+
+		// Notify frontend
+		bus.Publish(Event{Type: "delegation:update", Data: map[string]any{
+			"squad": body.Squad, "taskId": taskID, "status": "running",
+		}})
+
+		log.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)", taskID, body.Squad, body.From, body.To)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"taskId":  taskID,
+			"branch":  branchName,
+			"session": res.Session,
+			"window":  res.Window,
+		})
 	}
 }

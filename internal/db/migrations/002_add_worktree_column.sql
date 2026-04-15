@@ -1,0 +1,1 @@
+ALTER TABLE claude_tasks ADD COLUMN worktree TEXT NOT NULL DEFAULT '';

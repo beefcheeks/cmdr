@@ -122,6 +122,7 @@ func ensureSchema(d *sql.DB) error {
 			created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
 			started_at        DATETIME,
 			completed_at      DATETIME,
+			worktree          TEXT NOT NULL DEFAULT '',
 			-- vestigial delegation columns (kept for SQLite compat, data lives in delegations table)
 			squad             TEXT NOT NULL DEFAULT '',
 			delegation_from   TEXT NOT NULL DEFAULT '',

@@ -7,15 +7,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	cmdr "github.com/mikehu/cmdr"
 	"github.com/mikehu/cmdr/internal/daemon"
 	"github.com/mikehu/cmdr/internal/db"
-	"github.com/mikehu/cmdr/internal/prompts"
 	"github.com/mikehu/cmdr/internal/scheduler"
 	"github.com/spf13/cobra"
 )
@@ -373,109 +370,31 @@ func enlistCmd() *cobra.Command {
 				return fmt.Errorf("--squad, --from, --to, and --summary are required")
 			}
 
-			database, err := db.Open()
+			body, _ := json.Marshal(map[string]string{
+				"squad": squad, "from": from, "to": to,
+				"summary": summary, "details": details,
+			})
+			resp, err := daemon.Client().Post("http://cmdr/api/squads/enlist", "application/json", bytes.NewReader(body))
 			if err != nil {
-				return err
+				return fmt.Errorf("daemon unreachable: %w", err)
 			}
-			defer database.Close()
+			defer resp.Body.Close()
 
-			// Validate squad exists
-			var squadExists bool
-			database.QueryRow(`SELECT COUNT(*) FROM squads WHERE name = ?`, squad).Scan(&squadExists)
-			if !squadExists {
-				return fmt.Errorf("squad %q does not exist", squad)
-			}
+			var result map[string]any
+			json.NewDecoder(resp.Body).Decode(&result)
 
-			// Resolve target alias to repo path
-			var targetPath string
-			err = database.QueryRow(`SELECT path FROM repos WHERE squad = ? AND squad_alias = ?`, squad, to).Scan(&targetPath)
-			if err != nil {
-				return fmt.Errorf("squad member %q not found in squad %q", to, squad)
-			}
-
-			// Check no running delegation already targets this repo
-			var running int
-			database.QueryRow(`SELECT COUNT(*) FROM claude_tasks WHERE type = 'delegation' AND repo_path = ? AND status = 'running'`, targetPath).Scan(&running)
-			if running > 0 {
-				return fmt.Errorf("%s already has an active delegation — wait for it to complete", to)
-			}
-
-			// Create task row
-			prompt := fmt.Sprintf("## Enlistment from %s\n\n**Summary:** %s\n\n%s", from, summary, details)
-			now := time.Now().Format(time.RFC3339)
-			taskResult, err := database.Exec(
-				`INSERT INTO claude_tasks (type, status, repo_path, prompt, intent, created_at, started_at)
-				 VALUES ('delegation', 'running', ?, ?, 'delegation', ?, ?)`,
-				targetPath, prompt, now, now,
-			)
-			if err != nil {
-				return fmt.Errorf("creating task: %w", err)
-			}
-			taskID64, _ := taskResult.LastInsertId()
-			taskID := int(taskID64)
-
-			// Create branch
-			branchName := fmt.Sprintf("squad/%s/%d", squad, taskID)
-
-			// Insert delegation details
-			database.Exec(
-				`INSERT INTO delegations (task_id, squad, from_alias, to_alias, branch, summary, details)
-				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				taskID, squad, from, to, branchName, summary, details,
-			)
-			if out, err := exec.Command("git", "-C", targetPath, "checkout", "-b", branchName).CombinedOutput(); err != nil {
-				// Clean up task on failure
-				database.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
-				return fmt.Errorf("creating branch: %s", strings.TrimSpace(string(out)))
-			}
-
-			// Debrief path in /tmp — transient, captured by poller then deleted
-			debriefDir := filepath.Join(os.TempDir(), "cmdr")
-			os.MkdirAll(debriefDir, 0o700)
-			debriefPath := filepath.Join(debriefDir, fmt.Sprintf("debrief-%d.md", taskID))
-			prompt += fmt.Sprintf("\n\n---\n\nDEBRIEF_PATH: %s", debriefPath)
-
-			// Build claude command with delegation system prompt
-			escapedPrompt := strings.ReplaceAll(prompt, "'", "'\\''")
-			claudeCmd := fmt.Sprintf("claude --name 'cmdr-task-%d'", taskID)
-
-			if systemPrompt, err := prompts.GetIntentPrompt("delegation"); err == nil {
-				escapedSystem := strings.ReplaceAll(systemPrompt, "'", "'\\''")
-				claudeCmd = fmt.Sprintf("%s --append-system-prompt '%s' '%s'", claudeCmd, escapedSystem, escapedPrompt)
-			} else {
-				claudeCmd = fmt.Sprintf("%s '%s'", claudeCmd, escapedPrompt)
-			}
-
-			// Find or create tmux session for target repo
-			windowName := fmt.Sprintf("enlist-%d", taskID)
-			tmuxArgs := []string{"new-window", "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd}
-
-			// Try to find existing session for this repo
-			sessionName := findSessionForRepo(targetPath)
-			if sessionName != "" {
-				tmuxArgs = append([]string{"new-window", "-t", sessionName, "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd}, []string{}...)
-				tmuxArgs = []string{"new-window", "-t", sessionName, "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd}
-			} else {
-				// Create a new session
-				out, err := exec.Command("tmux", "new-session", "-ds", to, "-n", windowName, "-c", targetPath, "bash", "-c", claudeCmd).CombinedOutput()
-				if err != nil {
-					database.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
-					return fmt.Errorf("tmux new-session: %s", strings.TrimSpace(string(out)))
+			if resp.StatusCode != 200 {
+				if errMsg, ok := result["error"].(string); ok {
+					return fmt.Errorf("%s", errMsg)
 				}
-				fmt.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)\n", taskID, squad, from, to)
-				fmt.Printf("cmdr: branch %s, session %s:%s\n", branchName, to, windowName)
-				notifyDaemon(squad, taskID)
-				return nil
+				return fmt.Errorf("enlist failed (status %d)", resp.StatusCode)
 			}
 
-			if out, err := exec.Command("tmux", tmuxArgs...).CombinedOutput(); err != nil {
-				database.Exec(`DELETE FROM claude_tasks WHERE id = ?`, taskID)
-				return fmt.Errorf("tmux new-window: %s", strings.TrimSpace(string(out)))
-			}
-
+			taskID := int(result["taskId"].(float64))
+			branch := result["branch"].(string)
+			session := result["session"].(string)
 			fmt.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)\n", taskID, squad, from, to)
-			fmt.Printf("cmdr: branch %s, session %s:%s\n", branchName, sessionName, windowName)
-			notifyDaemon(squad, taskID)
+			fmt.Printf("cmdr: branch %s, session %s\n", branch, session)
 			return nil
 		},
 	}
@@ -485,37 +404,6 @@ func enlistCmd() *cobra.Command {
 	cmd.Flags().StringVar(&summary, "summary", "", "Brief description of what you need")
 	cmd.Flags().StringVar(&details, "details", "", "Full specification")
 	return cmd
-}
-
-// notifyDaemon publishes an SSE event via the daemon over the Unix socket.
-func notifyDaemon(squad string, taskID int) {
-	body, _ := json.Marshal(map[string]any{
-		"event": "delegation:update",
-		"data":  map[string]any{"squad": squad, "taskId": taskID, "status": "running"},
-	})
-	resp, err := daemon.Client().Post("http://cmdr/api/notify", "application/json", bytes.NewReader(body))
-	if err == nil {
-		resp.Body.Close()
-	}
-}
-
-// findSessionForRepo finds an existing tmux session that has a pane in the given directory.
-func findSessionForRepo(repoPath string) string {
-	out, err := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}\t#{pane_current_path}").Output()
-	if err != nil {
-		return ""
-	}
-	resolved := repoPath
-	if r, err := filepath.EvalSymlinks(repoPath); err == nil {
-		resolved = r
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		parts := strings.SplitN(line, "\t", 2)
-		if len(parts) == 2 && (parts[1] == repoPath || parts[1] == resolved) {
-			return parts[0]
-		}
-	}
-	return ""
 }
 
 func missionsCmd() *cobra.Command {

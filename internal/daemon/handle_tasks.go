@@ -361,8 +361,8 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 		status = "running"
 	}
 	now := time.Now().Format(time.RFC3339)
-	db.Exec(`UPDATE claude_tasks SET status=?, intent=?, started_at=? WHERE id=?`,
-		status, cfg.Intent, now, cfg.TaskID)
+	db.Exec(`UPDATE claude_tasks SET status=?, intent=?, worktree=?, started_at=? WHERE id=?`,
+		status, cfg.Intent, worktreeName, now, cfg.TaskID)
 	bus.Publish(Event{Type: "claude:task", Data: map[string]any{
 		"id": cfg.TaskID, "status": status, "intent": cfg.Intent, "repoPath": cfg.RepoPath,
 	}})
@@ -658,36 +658,20 @@ func buildWorktreeName(prefix string, taskID int) string {
 
 // --- Worktree cleanup (unified) ---
 
-// taskWorktreeInfo returns the worktree name and marker path for a task.
-// Uses the same intent-based naming as taskWindowName for consistency.
-func taskWorktreeInfo(taskType, intent, status string, taskID int) (worktreeName string, markerPath string) {
-	// Delegations don't use worktrees (yet — will migrate to launchTask)
-	if taskType == "delegation" {
-		return
+// taskMarkerPath returns the marker file path for review-triggered refactors.
+func taskMarkerPath(taskType, worktreeName string) string {
+	if taskType != "directive" && worktreeName != "" {
+		return filepath.Join(os.Getenv("HOME"), ".cmdr", "refactors", worktreeName)
 	}
-	if status == "implementing" {
-		worktreeName = buildWorktreeName("new-feature-impl", taskID)
-		return
-	}
-	// Derive prefix from intent; fall back to "task" for no-intent directives
-	prefix := "task"
-	if intent != "" {
-		prefix = intent
-	}
-	worktreeName = buildWorktreeName(prefix, taskID)
-	// Review-triggered refactors use a marker file for tracking
-	if taskType != "directive" {
-		markerPath = filepath.Join(os.Getenv("HOME"), ".cmdr", "refactors", worktreeName)
-	}
-	return
+	return ""
 }
 
 // cleanupTaskWorktree removes the worktree (and marker file if applicable) for a single task.
 func cleanupTaskWorktree(db *sql.DB, taskID int) {
-	var repoPath, taskType, intent, status string
-	err := db.QueryRow(`SELECT repo_path, type, COALESCE(intent, ''), status FROM claude_tasks WHERE id = ?`, taskID).
-		Scan(&repoPath, &taskType, &intent, &status)
-	if err != nil {
+	var repoPath, taskType, worktreeName, status string
+	err := db.QueryRow(`SELECT repo_path, type, worktree, status FROM claude_tasks WHERE id = ?`, taskID).
+		Scan(&repoPath, &taskType, &worktreeName, &status)
+	if err != nil || worktreeName == "" {
 		return
 	}
 	// Only clean up tasks that are in a worktree-using state
@@ -695,25 +679,23 @@ func cleanupTaskWorktree(db *sql.DB, taskID int) {
 		return
 	}
 
-	worktreeName, markerPath := taskWorktreeInfo(taskType, intent, status, taskID)
-	removeWorktree(repoPath, taskID, worktreeName, markerPath)
+	removeWorktree(repoPath, taskID, worktreeName, taskMarkerPath(taskType, worktreeName))
 }
 
 // cleanupAllTaskWorktrees removes worktrees for all completed/resolved/refactoring tasks.
 func cleanupAllTaskWorktrees(db *sql.DB) {
-	rows, err := db.Query(`SELECT id, type, repo_path, COALESCE(intent, ''), status FROM claude_tasks WHERE status IN ('completed', 'resolved', 'refactoring', 'implementing')`)
+	rows, err := db.Query(`SELECT id, type, repo_path, worktree FROM claude_tasks WHERE worktree != '' AND status IN ('completed', 'resolved', 'refactoring', 'implementing')`)
 	if err != nil {
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id int
-		var taskType, repoPath, intent, status string
-		if err := rows.Scan(&id, &taskType, &repoPath, &intent, &status); err != nil {
+		var taskType, repoPath, worktreeName string
+		if err := rows.Scan(&id, &taskType, &repoPath, &worktreeName); err != nil {
 			continue
 		}
-		worktreeName, markerPath := taskWorktreeInfo(taskType, intent, status, id)
-		removeWorktree(repoPath, id, worktreeName, markerPath)
+		removeWorktree(repoPath, id, worktreeName, taskMarkerPath(taskType, worktreeName))
 	}
 }
 
