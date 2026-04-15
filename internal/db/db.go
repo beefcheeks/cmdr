@@ -123,6 +123,7 @@ func ensureSchema(d *sql.DB) error {
 			started_at        DATETIME,
 			completed_at      DATETIME,
 			worktree          TEXT NOT NULL DEFAULT '',
+			parent_id         INTEGER REFERENCES claude_tasks(id),
 			-- vestigial delegation columns (kept for SQLite compat, data lives in delegations table)
 			squad             TEXT NOT NULL DEFAULT '',
 			delegation_from   TEXT NOT NULL DEFAULT '',

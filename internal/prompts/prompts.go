@@ -49,25 +49,40 @@ func Review(data ReviewData) (string, error) {
 	return buf.String(), nil
 }
 
-// Intent represents a predefined directive intent.
+// --- Intent metadata registry ---
+
+// IntentMeta describes the execution characteristics of a directive intent.
+type IntentMeta struct {
+	Mode     string // "interactive" (tmux window) or "headless" (claude -p)
+	Artifact string // expected output: "pr", "adr", "report", or "" (none)
+	Hidden   bool   // true = not shown in directive intent picker UI
+}
+
+// intentRegistry is the single source of truth for intent behavior.
+var intentRegistry = map[string]IntentMeta{
+	"bug-fix":        {Mode: "interactive", Artifact: "pr"},
+	"refactor":       {Mode: "interactive", Artifact: "pr"},
+	"new-feature":    {Mode: "interactive", Artifact: "adr"},
+	"analysis":       {Mode: "headless", Artifact: "report"},
+	"implementation": {Mode: "interactive", Artifact: "pr", Hidden: true},
+	"delegation":     {Mode: "interactive", Hidden: true},
+	"generic":        {Mode: "interactive", Hidden: true},
+}
+
+// GetIntentMeta returns the metadata for an intent, or a zero-value IntentMeta
+// for unknown intents (which behave as interactive with no expected artifact).
+func GetIntentMeta(id string) IntentMeta {
+	return intentRegistry[id]
+}
+
+// Intent represents a user-facing directive intent for the UI.
 type Intent struct {
 	ID         string `json:"id"`         // e.g. "bug-fix"
 	Name       string `json:"name"`       // e.g. "Bug Fix"
-	ProducesPR bool   `json:"producesPR"` // true if this intent is expected to create a PR
+	ProducesPR bool   `json:"producesPR"` // true if artifact is "pr"
 }
 
-// Intents that are expected to produce a PR as their artifact.
-var prIntents = map[string]bool{
-	"refactor":    true,
-	"new-feature": true,
-}
-
-// Intents that run headless via claude -p (no interactive tmux window).
-var headlessIntents = map[string]bool{
-	"analysis": true,
-}
-
-// ListIntents returns all available intent presets.
+// ListIntents returns all user-facing intent presets.
 func ListIntents() []Intent {
 	var intents []Intent
 	entries, err := fs.ReadDir(intentFS, "intents")
@@ -79,25 +94,42 @@ func ListIntents() []Intent {
 			continue
 		}
 		id := strings.TrimSuffix(e.Name(), ".md")
-		// Internal-only intents (used by cmdr CLI or as fallbacks, not user-facing)
-		if id == "delegation" || id == "generic" {
+		meta := GetIntentMeta(id)
+		if meta.Hidden {
 			continue
 		}
 		name := strings.ReplaceAll(id, "-", " ")
-		// Title case
 		words := strings.Fields(name)
 		for i, w := range words {
 			words[i] = strings.ToUpper(w[:1]) + w[1:]
 		}
-		intents = append(intents, Intent{ID: id, Name: strings.Join(words, " "), ProducesPR: prIntents[id]})
+		intents = append(intents, Intent{
+			ID:         id,
+			Name:       strings.Join(words, " "),
+			ProducesPR: meta.Artifact == "pr",
+		})
 	}
 	return intents
 }
 
-// IntentProducesPR returns whether the given intent is expected to produce a PR.
+// --- Convenience wrappers (thin delegates to IntentMeta) ---
+
+// IntentProducesPR returns whether the intent is expected to produce a PR.
 func IntentProducesPR(id string) bool {
-	return prIntents[id]
+	return GetIntentMeta(id).Artifact == "pr"
 }
+
+// IntentIsHeadless returns whether the intent runs via claude -p (no tmux window).
+func IntentIsHeadless(id string) bool {
+	return GetIntentMeta(id).Mode == "headless"
+}
+
+// IntentHasDesignPhase returns whether an intent produces an ADR before implementation.
+func IntentHasDesignPhase(id string) bool {
+	return GetIntentMeta(id).Artifact == "adr"
+}
+
+// --- Prompt loading ---
 
 // GetIntentPrompt returns the system prompt for a given intent ID.
 func GetIntentPrompt(id string) (string, error) {
@@ -108,33 +140,17 @@ func GetIntentPrompt(id string) (string, error) {
 	return string(data), nil
 }
 
-// Intents that have a design phase before implementation.
-// Maps intent ID → design prompt filename in prompts root.
-var designPhase = map[string]string{
-	"new-feature": "design",
-}
-
-// GetDesignPrompt returns the design-phase system prompt for an intent,
-// or empty string if the intent has no design phase.
+// GetDesignPrompt returns the design-phase system prompt for an intent.
+// Returns empty string if the intent has no design phase.
+// TODO: Remove once new-feature.md IS the design prompt (Phase 5 cleanup).
 func GetDesignPrompt(id string) (string, error) {
-	name, ok := designPhase[id]
-	if !ok {
+	if GetIntentMeta(id).Artifact != "adr" {
 		return "", nil
 	}
-	data, err := promptFS.ReadFile(name + ".md")
+	// For now, still load design.md for ADR-producing intents
+	data, err := promptFS.ReadFile("design.md")
 	if err != nil {
 		return "", err
 	}
 	return string(data), nil
-}
-
-// IntentHasDesignPhase returns whether an intent uses a design-first workflow.
-func IntentHasDesignPhase(id string) bool {
-	_, ok := designPhase[id]
-	return ok
-}
-
-// IntentIsHeadless returns whether an intent runs via claude -p (no tmux window).
-func IntentIsHeadless(id string) bool {
-	return headlessIntents[id]
 }
