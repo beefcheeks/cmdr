@@ -304,9 +304,15 @@ func cmdrBin() string {
 
 func mergeHooks(path string) error {
 	bin := cmdrBin()
-	cmdrHooks := map[string]string{
-		"SessionStart":     fmt.Sprintf(`%s context --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
-		"UserPromptSubmit": fmt.Sprintf(`%s missions --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
+
+	// Desired hooks: event → list of commands
+	desiredHooks := map[string][]string{
+		"SessionStart": {
+			fmt.Sprintf(`%s context --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
+		},
+		"UserPromptSubmit": {
+			fmt.Sprintf(`%s missions --repo "${CLAUDE_PROJECT_DIR:-$PWD}"`, bin),
+		},
 	}
 
 	// Read existing settings if present
@@ -325,27 +331,84 @@ func mergeHooks(path string) error {
 	}
 
 	changed := false
-	for event, hookCmd := range cmdrHooks {
+	for event, cmds := range desiredHooks {
 		hookList, _ := hooks[event].([]any)
 
-		// Check if our hook already exists
-		found := false
+		// Remove any old-format entries (flat {type, command} without hooks array)
+		// and any stale cmdr entries (e.g. check-delegations, old paths)
+		var cleaned []any
 		for _, h := range hookList {
+			hMap, ok := h.(map[string]any)
+			if !ok {
+				cleaned = append(cleaned, h)
+				continue
+			}
+			// Old flat format: has "command" at top level but no "hooks" array
+			if _, hasCmd := hMap["command"]; hasCmd {
+				if _, hasHooks := hMap["hooks"]; !hasHooks {
+					changed = true // dropping old-format entry
+					continue
+				}
+			}
+			// New format: check if any inner hook is a cmdr command
+			if innerHooks, ok := hMap["hooks"].([]any); ok {
+				isCmdr := false
+				for _, ih := range innerHooks {
+					if ihm, ok := ih.(map[string]any); ok {
+						if cmd, _ := ihm["command"].(string); strings.Contains(cmd, "cmdr ") {
+							isCmdr = true
+							break
+						}
+					}
+				}
+				if isCmdr {
+					changed = true // will be replaced below
+					continue
+				}
+			}
+			cleaned = append(cleaned, h)
+		}
+
+		// Build the cmdr entry with all commands in one hooks array
+		var innerHooks []map[string]any
+		for _, cmd := range cmds {
+			innerHooks = append(innerHooks, map[string]any{
+				"type":    "command",
+				"command": cmd,
+			})
+		}
+		entry := map[string]any{
+			"matcher": "",
+			"hooks":   innerHooks,
+		}
+
+		// Check if an identical entry already exists
+		found := false
+		for _, h := range cleaned {
 			if hMap, ok := h.(map[string]any); ok {
-				if cmd, _ := hMap["command"].(string); cmd == hookCmd {
-					found = true
-					break
+				if existingHooks, ok := hMap["hooks"].([]any); ok && len(existingHooks) == len(innerHooks) {
+					match := true
+					for i, ih := range existingHooks {
+						ihm, _ := ih.(map[string]any)
+						if cmd, _ := ihm["command"].(string); cmd != cmds[i] {
+							match = false
+							break
+						}
+					}
+					if match {
+						found = true
+						break
+					}
 				}
 			}
 		}
+
 		if !found {
-			hookList = append(hookList, map[string]any{
-				"type":    "command",
-				"command": hookCmd,
-			})
-			hooks[event] = hookList
+			cleaned = append(cleaned, entry)
 			changed = true
 		}
+
+		hooks[event] = cleaned
 	}
 
 	if !changed {

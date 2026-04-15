@@ -566,6 +566,14 @@ export async function submitDirective(id: number, intent?: string): Promise<{ st
 	return data;
 }
 
+export function cancelTask(id: number): Promise<{ status: string }> {
+	return request('/claude/tasks/cancel', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id })
+	});
+}
+
 export interface DirectiveIntent {
 	id: string;
 	name: string;

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { CircleCheck, CircleX, Wrench, GitPullRequestArrow, X, Pencil, Plus, CircleQuestionMark, Users } from 'lucide-svelte';
-	import { getClaudeTaskResult, type ClaudeTask } from '$lib/api';
+	import { CircleCheck, CircleX, Wrench, GitPullRequestArrow, X, Pencil, Plus, CircleQuestionMark, Users, Square } from 'lucide-svelte';
+	import { getClaudeTaskResult, cancelTask, type ClaudeTask } from '$lib/api';
 	import {
 		loaded as loadedStore,
 		visibleTasks as visibleTasksStore,
@@ -180,8 +180,21 @@
 					</div>
 
 					<!-- Overlay actions -->
-					{#if task.status !== 'running' && task.status !== 'pending'}
-						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-20 opacity-0 group-hover:opacity-100 transition-opacity bg-linear-to-r from-transparent to-30% to-bourbon-800 rounded-r-lg">
+					{#if (task.type === 'directive' || task.type === 'ask') && (task.status === 'running' || task.status === 'refactoring' || task.status === 'implementing')}
+						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-20 invisible group-hover:visible bg-linear-to-r from-transparent to-30% to-bourbon-800 rounded-r-lg">
+							<span
+								role="button"
+								tabindex="0"
+								onclick={(e) => { e.stopPropagation(); cancelTask(task.id); }}
+								onkeydown={(e) => { if (e.key === 'Enter') cancelTask(task.id); }}
+								class="btn-chiclet-sm btn-chiclet-danger"
+								title={task.type === 'directive' ? 'Cancel and return to draft' : 'Cancel'}
+							>
+								<Square size={12} />
+							</span>
+						</div>
+					{:else if task.status !== 'running' && task.status !== 'pending'}
+						<div class="absolute right-0 top-0 bottom-0 flex items-center gap-1.5 pr-3 pl-20 invisible group-hover:visible bg-linear-to-r from-transparent to-30% to-bourbon-800 rounded-r-lg">
 							<span
 								role="button"
 								tabindex="0"

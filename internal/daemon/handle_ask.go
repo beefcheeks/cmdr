@@ -9,9 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+// askProcesses tracks running ask processes by task ID for cancellation.
+var askProcesses sync.Map // map[int]*exec.Cmd
 
 func handleAsk(db *sql.DB, bus *EventBus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -28,12 +33,16 @@ func handleAsk(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			return
 		}
 
+		home, _ := os.UserHomeDir()
+		askDir := filepath.Join(home, ".cmdr")
+		os.MkdirAll(askDir, 0o700)
+
 		now := time.Now().Format(time.RFC3339)
 		title := askTitle(body.Question)
 		res, err := db.Exec(`
 			INSERT INTO claude_tasks (type, status, repo_path, prompt, title, created_at, started_at)
-			VALUES ('ask', 'running', '', ?, ?, ?, ?)
-		`, body.Question, title, now, now)
+			VALUES ('ask', 'running', ?, ?, ?, ?, ?)
+		`, askDir, body.Question, title, now, now)
 		if err != nil {
 			http.Error(w, jsonErr(err), http.StatusInternalServerError)
 			return
@@ -46,18 +55,16 @@ func handleAsk(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			"id": id, "type": "ask", "status": "running", "title": title,
 		}})
 
-		go runAsk(db, bus, id, body.Question)
+		go runAsk(db, bus, id, body.Question, askDir)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{"id": id, "status": "running"})
 	}
 }
 
-func runAsk(db *sql.DB, bus *EventBus, taskID int, question string) {
-	home, _ := os.UserHomeDir()
-
+func runAsk(db *sql.DB, bus *EventBus, taskID int, question string, workDir string) {
 	cmd := exec.Command("claude", "-p", "/ask "+question, "--output-format", "stream-json", "--verbose")
-	cmd.Dir = home
+	cmd.Dir = workDir
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -70,6 +77,9 @@ func runAsk(db *sql.DB, bus *EventBus, taskID int, question string) {
 		failAsk(db, bus, taskID, err)
 		return
 	}
+
+	askProcesses.Store(taskID, cmd)
+	defer askProcesses.Delete(taskID)
 
 	log.Printf("cmdr: ask %d started (pid %d): %s", taskID, cmd.Process.Pid, question)
 
@@ -215,6 +225,22 @@ func askTitle(question string) string {
 	return t
 }
 
+// cancelAskProcess kills the running claude process for an ask task.
+// Returns true if a process was found and killed.
+func cancelAskProcess(taskID int) bool {
+	v, ok := askProcesses.LoadAndDelete(taskID)
+	if !ok {
+		return false
+	}
+	cmd := v.(*exec.Cmd)
+	if cmd.Process != nil {
+		cmd.Process.Kill()
+		log.Printf("cmdr: ask %d process killed (pid %d)", taskID, cmd.Process.Pid)
+		return true
+	}
+	return false
+}
+
 // --- Continue in interactive session ---
 
 const askSession = "ask_claude"
@@ -234,9 +260,9 @@ func handleContinueAsk(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var sessionID string
-		err := db.QueryRow(`SELECT COALESCE(claude_session_id, '') FROM claude_tasks WHERE id = ?`, body.ID).
-			Scan(&sessionID)
+		var sessionID, repoPath string
+		err := db.QueryRow(`SELECT COALESCE(claude_session_id, ''), COALESCE(repo_path, '') FROM claude_tasks WHERE id = ?`, body.ID).
+			Scan(&sessionID, &repoPath)
 		if err != nil {
 			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
 			return
@@ -247,11 +273,17 @@ func handleContinueAsk(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		home, _ := os.UserHomeDir()
-		shellCmd := fmt.Sprintf("claude --resume '%s'", sessionID)
+		// Use the directory where the session was originally created
+		askDir := repoPath
+		if askDir == "" {
+			home, _ := os.UserHomeDir()
+			askDir = filepath.Join(home, ".cmdr")
+		}
+		os.MkdirAll(askDir, 0o700)
+		shellCmd := fmt.Sprintf("exec claude --resume '%s'", sessionID)
 		windowName := fmt.Sprintf("ask-%d", body.ID)
 
-		target, err := createAskWindow(windowName, home, shellCmd)
+		target, err := createAskWindow(windowName, askDir, shellCmd)
 		if err != nil {
 			log.Printf("cmdr: continue ask %d failed: %v", body.ID, err)
 			http.Error(w, jsonErr(err), http.StatusInternalServerError)
@@ -280,6 +312,10 @@ func createAskWindow(windowName, dir, shellCmd string) (string, error) {
 		}
 	}
 
+	// Keep window alive if claude exits with an error so the user can see what happened
+	target := askSession + ":" + windowName
+	exec.Command("tmux", "set-option", "-t", target, "remain-on-exit", "on").Run()
+
 	exec.Command("tmux", "switch-client", "-t", askSession).Run()
-	return askSession + ":" + windowName, nil
+	return target, nil
 }
