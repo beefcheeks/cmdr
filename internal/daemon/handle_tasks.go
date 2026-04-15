@@ -554,6 +554,14 @@ func handleSpawnTask(db *sql.DB, bus *EventBus) http.HandlerFunc {
 
 		enhanceTitle(db, bus, id, truncate(childPrompt, 500))
 
+		// Auto-dismiss parent task
+		killTaskWindow(db, body.ParentID)
+		cleanupTaskWorktree(db, body.ParentID)
+		db.Exec(`DELETE FROM claude_tasks WHERE id = ?`, body.ParentID)
+		bus.Publish(Event{Type: "claude:task", Data: map[string]any{
+			"id": body.ParentID, "status": "dismissed",
+		}})
+
 		log.Printf("cmdr: spawned task %d from parent %d (intent %q)", id, body.ParentID, intent)
 
 		w.Header().Set("Content-Type", "application/json")
