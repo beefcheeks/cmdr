@@ -239,7 +239,6 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/review/comments/save", handleSaveReviewComment(database, bus))
 	mux.HandleFunc("/api/review/comments/delete", handleDeleteReviewComment(database, bus))
 	mux.HandleFunc("/api/review/submit", handleSubmitReview(database, bus))
-	mux.HandleFunc("/api/review/refactor", handleStartRefactor(database, bus))
 
 	// Claude tasks
 	mux.HandleFunc("/api/claude/sessions", handleClaudeSessions())
@@ -256,7 +255,7 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/directives/save", handleSaveDirective(database, bus))
 	mux.HandleFunc("/api/directives/submit", handleSubmitDirective(database, bus))
 	mux.HandleFunc("/api/directives/intents", handleListIntents())
-	mux.HandleFunc("/api/design/implement", handleStartImplementation(database, bus))
+
 
 	// Ask
 	mux.HandleFunc("/api/ask", handleAsk(database, bus))

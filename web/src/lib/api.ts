@@ -472,36 +472,6 @@ export function updateClaudeTaskResult(id: number, result: string): Promise<{ st
 	});
 }
 
-export async function startImplementation(taskId: number, commitADR: boolean): Promise<{ target: string; session: string; window: string }> {
-	const res = await fetch(`${BASE}/design/implement`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ taskId, commitADR })
-	});
-	const data = await res.json();
-	if (!res.ok) {
-		const err = new Error(data.error || `${res.status} ${res.statusText}`) as Error & { unpushed?: number };
-		if (data.unpushed) err.unpushed = data.unpushed;
-		throw err;
-	}
-	return data;
-}
-
-export async function startRefactor(taskId: number): Promise<{ target: string; session: string; window: string }> {
-	const res = await fetch(`${BASE}/review/refactor`, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ taskId })
-	});
-	const data = await res.json();
-	if (!res.ok) {
-		const err = new Error(data.error || `${res.status} ${res.statusText}`) as Error & { unpushed?: number };
-		if (data.unpushed) err.unpushed = data.unpushed;
-		throw err;
-	}
-	return data;
-}
-
 export function dismissAllClaudeTasks(): Promise<{ dismissed: number }> {
 	return request('/claude/tasks/dismiss', {
 		method: 'POST',

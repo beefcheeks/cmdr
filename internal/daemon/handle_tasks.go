@@ -337,7 +337,6 @@ type TaskLaunchConfig struct {
 	RepoPath       string
 	WindowPrefix   string // e.g. "refactor", "task" → "refactor-42", "task-42"
 	WorktreePrefix string // overrides WindowPrefix for worktree naming; defaults to WindowPrefix if empty
-	MarkerDir      string // optional dir for writing task ID marker file (e.g. ~/.cmdr/refactors)
 }
 
 // TaskLaunchResult is returned from launchTask with session/window info.
@@ -357,14 +356,9 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 		worktreePrefix = cfg.WindowPrefix
 	}
 
-	// Write optional marker file
 	var worktreeName string
 	if worktreePrefix != "" {
 		worktreeName = buildWorktreeName(worktreePrefix, cfg.TaskID)
-		if cfg.MarkerDir != "" {
-			os.MkdirAll(cfg.MarkerDir, 0o700)
-			os.WriteFile(filepath.Join(cfg.MarkerDir, worktreeName), []byte(strconv.Itoa(cfg.TaskID)), 0o644)
-		}
 	}
 
 	// Resolve image references to absolute paths Claude can read
@@ -435,138 +429,6 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 	log.Printf("cmdr: task %d launched (session %s, target %s, intent %q)", cfg.TaskID, sessionName, target, cfg.Intent)
 
 	return TaskLaunchResult{Target: target, Session: sessionName, Window: windowName}, nil
-}
-
-// --- Launch refactor from review findings ---
-
-func handleStartRefactor(db *sql.DB, bus *EventBus) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-			return
-		}
-
-		var body struct {
-			TaskID int `json:"taskId"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TaskID == 0 {
-			http.Error(w, `{"error":"missing taskId"}`, http.StatusBadRequest)
-			return
-		}
-
-		var result, repoPath, commitSha string
-		err := db.QueryRow(`SELECT result, repo_path, commit_sha FROM claude_tasks WHERE id = ?`, body.TaskID).
-			Scan(&result, &repoPath, &commitSha)
-		if err != nil {
-			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
-			return
-		}
-
-		if checkUnpushed(w, repoPath) {
-			return
-		}
-
-		shortSha := commitSha
-		if len(shortSha) > 7 {
-			shortSha = shortSha[:7]
-		}
-
-		res, err := launchTask(db, bus, TaskLaunchConfig{
-			TaskID:   body.TaskID,
-			Intent:   "refactor",
-			RepoPath: repoPath,
-			UserPrompt: fmt.Sprintf(
-				"Address the following code review findings from commit %s.\n\n"+
-					"## How to read these findings\n\n"+
-					"- Each finding has a priority, location, issue description, and a step-by-step plan\n"+
-					"- If a finding contains a `> User response:` blockquote, treat it as explicit guidance — follow it\n"+
-					"- If a finding has multiple valid approaches and no user response, pick the cleanest one\n"+
-					"- If a finding was removed from the review, the reviewer decided it's not applicable — skip it\n"+
-					"- Only ask me if there is genuine ambiguity that requires a judgment call\n\n"+
-					"## Review Findings\n\n%s",
-				shortSha, result,
-			),
-			WindowPrefix:   "refactor",
-			MarkerDir:      filepath.Join(os.Getenv("HOME"), ".cmdr", "refactors"),
-		})
-		if err != nil {
-			log.Printf("cmdr: refactor launch failed: %v", err)
-			http.Error(w, jsonErr(err), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"target": res.Target, "session": res.Session, "window": res.Window})
-	}
-}
-
-// --- Launch implementation from design ADR ---
-
-func handleStartImplementation(db *sql.DB, bus *EventBus) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
-			return
-		}
-
-		var body struct {
-			TaskID    int  `json:"taskId"`
-			CommitADR bool `json:"commitADR"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.TaskID == 0 {
-			http.Error(w, `{"error":"missing taskId"}`, http.StatusBadRequest)
-			return
-		}
-
-		var adrContent, repoPath string
-		err := db.QueryRow(`SELECT result, repo_path FROM claude_tasks WHERE id = ?`, body.TaskID).
-			Scan(&adrContent, &repoPath)
-		if err != nil {
-			http.Error(w, `{"error":"task not found"}`, http.StatusNotFound)
-			return
-		}
-
-		// Pre-flight: worktrees branch from HEAD, so unpushed work would be missed
-		if checkUnpushed(w, repoPath) {
-			return
-		}
-
-		// Build the prompt with the ADR and commit instructions
-		var prompt string
-		if body.CommitADR {
-			prompt = fmt.Sprintf(
-				"## Approved ADR\n\n"+
-					"The following ADR has been approved. Commit it to `docs/` (follow the existing `ADR-NNNN-name.md` naming convention) as your first action before implementing.\n\n"+
-					"```markdown\n%s\n```\n\n"+
-					"## Instructions\n\nImplement the feature described in this ADR.",
-				adrContent,
-			)
-		} else {
-			prompt = fmt.Sprintf(
-				"## Approved ADR\n\n"+
-					"The following ADR has been approved for implementation. Do NOT commit the ADR itself to the repo — it is for context only.\n\n"+
-					"%s\n\n"+
-					"## Instructions\n\nImplement the feature described in this ADR.",
-				adrContent,
-			)
-		}
-
-		res, err := launchTask(db, bus, TaskLaunchConfig{
-			TaskID:         body.TaskID,
-			Intent:         "new-feature",
-			RepoPath:       repoPath,
-			UserPrompt:     prompt,
-			WindowPrefix:   "new-feature-impl",
-		})
-		if err != nil {
-			log.Printf("cmdr: implementation launch failed: %v", err)
-			http.Error(w, jsonErr(err), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"target": res.Target, "session": res.Session, "window": res.Window})
-	}
 }
 
 // --- Spawn child task from completed parent ---
@@ -851,51 +713,41 @@ func buildWorktreeName(prefix string, taskID int) string {
 	return base
 }
 
-// --- Worktree cleanup (unified) ---
+// --- Worktree cleanup ---
 
-// taskMarkerPath returns the marker file path for review-triggered refactors.
-func taskMarkerPath(taskType, worktreeName string) string {
-	if taskType != "directive" && worktreeName != "" {
-		return filepath.Join(os.Getenv("HOME"), ".cmdr", "refactors", worktreeName)
-	}
-	return ""
-}
-
-// cleanupTaskWorktree removes the worktree (and marker file if applicable) for a single task.
+// cleanupTaskWorktree removes the worktree for a single task.
 func cleanupTaskWorktree(db *sql.DB, taskID int) {
-	var repoPath, taskType, worktreeName, status string
-	err := db.QueryRow(`SELECT repo_path, type, worktree, status FROM claude_tasks WHERE id = ?`, taskID).
-		Scan(&repoPath, &taskType, &worktreeName, &status)
+	var repoPath, worktreeName, status string
+	err := db.QueryRow(`SELECT repo_path, worktree, status FROM claude_tasks WHERE id = ?`, taskID).
+		Scan(&repoPath, &worktreeName, &status)
 	if err != nil || worktreeName == "" {
 		return
 	}
-	// Only clean up tasks that are in a worktree-using state
 	if status != "completed" && status != "running" {
 		return
 	}
-
-	removeWorktree(repoPath, taskID, worktreeName, taskMarkerPath(taskType, worktreeName))
+	removeWorktree(repoPath, taskID, worktreeName)
 }
 
-// cleanupAllTaskWorktrees removes worktrees for all completed/resolved/refactoring tasks.
+// cleanupAllTaskWorktrees removes worktrees for all completed tasks.
 func cleanupAllTaskWorktrees(db *sql.DB) {
-	rows, err := db.Query(`SELECT id, type, repo_path, worktree FROM claude_tasks WHERE worktree != '' AND status IN ('completed', 'running')`)
+	rows, err := db.Query(`SELECT id, repo_path, worktree FROM claude_tasks WHERE worktree != '' AND status IN ('completed', 'running')`)
 	if err != nil {
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var id int
-		var taskType, repoPath, worktreeName string
-		if err := rows.Scan(&id, &taskType, &repoPath, &worktreeName); err != nil {
+		var repoPath, worktreeName string
+		if err := rows.Scan(&id, &repoPath, &worktreeName); err != nil {
 			continue
 		}
-		removeWorktree(repoPath, id, worktreeName, taskMarkerPath(taskType, worktreeName))
+		removeWorktree(repoPath, id, worktreeName)
 	}
 }
 
-// removeWorktree removes a git worktree and optional marker file.
-func removeWorktree(repoPath string, taskID int, worktreeName, markerPath string) {
+// removeWorktree removes a git worktree.
+func removeWorktree(repoPath string, taskID int, worktreeName string) {
 	worktreePath := filepath.Join(repoPath, ".claude", "worktrees", worktreeName)
 	if _, err := os.Stat(worktreePath); err == nil {
 		cmd := exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath, "--force")
@@ -904,8 +756,5 @@ func removeWorktree(repoPath string, taskID int, worktreeName, markerPath string
 		} else {
 			log.Printf("cmdr: pruned worktree %s (task %d)", worktreeName, taskID)
 		}
-	}
-	if markerPath != "" {
-		os.Remove(markerPath)
 	}
 }
