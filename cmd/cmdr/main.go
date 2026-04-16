@@ -31,14 +31,14 @@ func main() {
 		Short:   "Personal command runner and automation daemon",
 		Long: `Personal command runner and automation daemon.
 
-For Claude sessions: enlistment status is delivered automatically via the
-UserPromptSubmit hook on your next message — there is no command to poll
-task or enlistment state. After running 'cmdr enlist', continue with work
-that doesn't depend on the enlistment; completion will be injected into
-your context when it lands.
+For Claude sessions: after 'cmdr enlist', completion is normally delivered
+automatically via the UserPromptSubmit hook on the next user message. If
+you need to actively check on an enlistment mid-run (e.g. in a headless
+session, or before the user sends a follow-up), use 'cmdr task <id>' with
+the taskId returned by 'cmdr enlist'.
 
 'cmdr status' reports daemon status only (pid, task count). It does not
-accept --task or --squad flags.`,
+accept --task or --squad flags — use 'cmdr task <id>' for task state.`,
 		Version: version,
 	}
 
@@ -163,32 +163,39 @@ func contextCmd() *cobra.Command {
 	return cmd
 }
 
-func printSquadContext(database *sql.DB, repoPath string) error {
-	var squadName, alias string
+// lookupSquad finds the squad and alias for a repo path, falling back to
+// resolving symlinks on stored paths if the exact match fails. Repos can be
+// stored under their pre-symlink path (e.g. ~/Code/...) while the caller
+// passes a fully-resolved path (e.g. /Volumes/...).
+func lookupSquad(database *sql.DB, repoPath string) (squad, alias string) {
 	err := database.QueryRow(
 		`SELECT squad, squad_alias FROM repos WHERE path = ?`, repoPath,
-	).Scan(&squadName, &alias)
-
-	// Try resolving stored paths if exact match fails
-	if err != nil {
-		rows, _ := database.Query(`SELECT path, squad, squad_alias FROM repos WHERE squad != ''`)
-		if rows != nil {
-			defer rows.Close()
-			for rows.Next() {
-				var p, s, a string
-				rows.Scan(&p, &s, &a)
-				resolved, resolveErr := filepath.EvalSymlinks(p)
-				if resolveErr == nil {
-					resolved = filepath.Clean(resolved)
-				}
-				if resolved == repoPath || filepath.Clean(p) == repoPath {
-					squadName, alias = s, a
-					break
-				}
-			}
-		}
+	).Scan(&squad, &alias)
+	if err == nil && squad != "" {
+		return squad, alias
 	}
 
+	rows, _ := database.Query(`SELECT path, squad, squad_alias FROM repos WHERE squad != ''`)
+	if rows == nil {
+		return "", ""
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p, s, a string
+		rows.Scan(&p, &s, &a)
+		resolved, resolveErr := filepath.EvalSymlinks(p)
+		if resolveErr == nil {
+			resolved = filepath.Clean(resolved)
+		}
+		if resolved == repoPath || filepath.Clean(p) == repoPath {
+			return s, a
+		}
+	}
+	return "", ""
+}
+
+func printSquadContext(database *sql.DB, repoPath string) error {
+	squadName, alias := lookupSquad(database, repoPath)
 	if squadName == "" {
 		return outputHook("SessionStart", "")
 	}
@@ -441,11 +448,11 @@ func enlistCmd() *cobra.Command {
 		Short: "Enlist a squad member for cross-repo work",
 		Long: `Enlist a squad member for cross-repo work.
 
-Dispatches a task to a sibling repo's Claude session. After dispatch, do
-NOT poll — there is no status command. Completion is delivered as context
-on your next prompt via the UserPromptSubmit hook (including the debrief
-written by the enlisted session). Continue with non-blocking work in the
-meantime.`,
+Dispatches a task to a sibling repo's Claude session and returns a taskId.
+Completion (including the enlisted session's debrief) is normally delivered
+as context on the next user prompt via the UserPromptSubmit hook. To check
+status mid-run, use 'cmdr task <id>'. Continue with non-blocking work while
+the enlistment runs.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if squad == "" || from == "" || to == "" || summary == "" {
 				return fmt.Errorf("--squad, --from, --to, and --summary are required")
@@ -511,9 +518,8 @@ func missionsCmd() *cobra.Command {
 			}
 			defer database.Close()
 
-			// Find this repo's squad alias
-			var squadName, alias string
-			database.QueryRow(`SELECT squad, squad_alias FROM repos WHERE path = ?`, repoPath).Scan(&squadName, &alias)
+			// Find this repo's squad alias (with symlink fallback)
+			squadName, alias := lookupSquad(database, repoPath)
 			if squadName == "" {
 				// Not in a squad — nothing to check
 				return outputHook("UserPromptSubmit", "")
