@@ -21,12 +21,36 @@
 		localContent = block.content;
 	});
 
-	// Auto-resize textarea to fit content
+	// Auto-resize textarea to fit content. Skips the DOM write when the
+	// height hasn't changed (most keystrokes within a wrapped line). Preserves
+	// the scroll position of the nearest scrollable ancestor when it does
+	// resize — the height='auto' reset would otherwise briefly collapse the
+	// document and reset scrollTop to 0.
 	function resize() {
-		if (textarea) {
-			textarea.style.height = 'auto';
-			textarea.style.height = textarea.scrollHeight + 'px';
+		if (!textarea) return;
+		const scroller = findScrollParent(textarea);
+		const savedScroll = scroller?.scrollTop ?? 0;
+		const currentHeight = textarea.style.height;
+		textarea.style.height = 'auto';
+		const target = textarea.scrollHeight + 'px';
+		if (currentHeight === target) {
+			// No height change — restore current and skip
+			textarea.style.height = currentHeight;
+			if (scroller) scroller.scrollTop = savedScroll;
+			return;
 		}
+		textarea.style.height = target;
+		if (scroller) scroller.scrollTop = savedScroll;
+	}
+
+	function findScrollParent(el: HTMLElement): HTMLElement | null {
+		let parent: HTMLElement | null = el.parentElement;
+		while (parent) {
+			const overflow = getComputedStyle(parent).overflowY;
+			if (overflow === 'auto' || overflow === 'scroll') return parent;
+			parent = parent.parentElement;
+		}
+		return null;
 	}
 
 	$effect(() => {
