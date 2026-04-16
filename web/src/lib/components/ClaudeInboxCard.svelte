@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { CircleCheck, CircleX, GitPullRequestArrow, X, Pencil, Plus, CircleQuestionMark, Users, Square } from 'lucide-svelte';
+	import { CircleCheck, CircleX, GitPullRequestArrow, GitMerge, X, Pencil, Plus, CircleQuestionMark, Users, Square, ScanSearch, FileSearch, FileCheck } from 'lucide-svelte';
 	import { cancelTask, type ClaudeTask } from '$lib/api';
 	import {
 		loaded as loadedStore,
@@ -40,6 +40,17 @@
 		const m = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
 		if (m) return `${m[2]}#${m[3]}`;
 		return url.length > 30 ? url.slice(0, 27) + '...' : url;
+	}
+
+	// A completed task is "terminal" if there's nothing left to inspect or act on
+	function isTerminal(task: ClaudeTask): boolean {
+		if (task.status === 'failed') return true;
+		if (task.status !== 'completed') return false;
+		// Merged PR — done
+		if (task.prUrl) return true;
+		// Generic directive with no intent — nothing to follow up
+		if (task.type === 'directive' && !task.intent) return true;
+		return false;
 	}
 
 	function badgeColor(type: string): string {
@@ -110,20 +121,28 @@
 			>
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">
-						{#if task.type === 'ask' && task.status === 'completed'}
-							<span class="text-cmd-400"><CircleQuestionMark size={15} /></span>
-						{:else if task.status === 'draft'}
+						{#if task.status === 'draft'}
 							<span class="text-cmd-400"><Pencil size={15} /></span>
 						{:else if task.type === 'ask' && task.status === 'running'}
 							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-cmd-500 rounded-full animate-spin"></div>
 						{:else if task.status === 'running' || task.status === 'pending'}
 							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-run-500 rounded-full animate-spin"></div>
 						{:else if task.status === 'resolved'}
-							<span class="text-green-400"><GitPullRequestArrow size={15} /></span>
+							<span class="text-violet-400"><GitPullRequestArrow size={15} /></span>
 						{:else if task.status === 'completed' && task.prUrl}
-							<span class="text-bourbon-500"><GitPullRequestArrow size={15} /></span>
+							<span class="text-bourbon-500"><GitMerge size={15} /></span>
+						{:else if task.status === 'completed' && task.type === 'ask'}
+							<span class="text-green-400"><CircleQuestionMark size={15} /></span>
+						{:else if task.status === 'completed' && task.intent === 'analysis'}
+							<span class="text-green-400"><ScanSearch size={15} /></span>
+						{:else if task.status === 'completed' && task.type === 'review'}
+							<span class="text-green-400"><FileSearch size={15} /></span>
+						{:else if task.status === 'completed' && task.intent === 'new-feature'}
+							<span class="text-green-400"><FileCheck size={15} /></span>
 						{:else if task.status === 'completed'}
-							<span class="text-green-400"><CircleCheck size={15} /></span>
+							<span class="text-bourbon-500"><CircleCheck size={15} /></span>
+						{:else if task.status === 'failed'}
+							<span class="text-red-400"><CircleX size={15} /></span>
 						{:else}
 							<span class="text-red-400"><CircleX size={15} /></span>
 						{/if}
@@ -134,7 +153,7 @@
 						<!-- Row 1: Title + type badge -->
 						<div class="flex items-center gap-2">
 							<span class="text-xs leading-snug truncate min-w-0 flex-1
-								{task.status === 'failed' ? 'text-bourbon-400 line-through' : task.status === 'completed' || task.status === 'resolved' ? 'text-bourbon-300' : 'text-bourbon-100'}">
+								{isTerminal(task) ? 'text-bourbon-500 line-through' : task.status === 'completed' || task.status === 'resolved' ? 'text-bourbon-300' : 'text-bourbon-100'}">
 								{task.title || fallbackTitle(task)}
 							</span>
 							<span class="font-mono text-[10px] px-1.5 py-0.5 rounded-full shrink-0 {badgeColor(task.type)}">{task.type}</span>
