@@ -443,6 +443,7 @@ func mergeHooks(path string) error {
 
 func enlistCmd() *cobra.Command {
 	var squad, from, to, summary, details string
+	var pr bool
 	cmd := &cobra.Command{
 		Use:   "enlist",
 		Short: "Enlist a squad member for cross-repo work",
@@ -458,9 +459,9 @@ the enlistment runs.`,
 				return fmt.Errorf("--squad, --from, --to, and --summary are required")
 			}
 
-			body, _ := json.Marshal(map[string]string{
+			body, _ := json.Marshal(map[string]any{
 				"squad": squad, "from": from, "to": to,
-				"summary": summary, "details": details,
+				"summary": summary, "details": details, "pr": pr,
 			})
 			resp, err := daemon.Client().Post("http://cmdr/api/squads/enlist", "application/json", bytes.NewReader(body))
 			if err != nil {
@@ -491,6 +492,7 @@ the enlistment runs.`,
 	cmd.Flags().StringVar(&to, "to", "", "Target repo alias")
 	cmd.Flags().StringVar(&summary, "summary", "", "Brief description of what you need")
 	cmd.Flags().StringVar(&details, "details", "", "Full specification")
+	cmd.Flags().BoolVar(&pr, "pr", false, "Open a pull request instead of merging directly")
 	return cmd
 }
 

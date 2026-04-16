@@ -344,6 +344,7 @@ func handleEnlist(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			To      string `json:"to"`
 			Summary string `json:"summary"`
 			Details string `json:"details"`
+			PR      bool   `json:"pr"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, `{"error":"invalid request body"}`, http.StatusBadRequest)
@@ -377,8 +378,16 @@ func handleEnlist(db *sql.DB, bus *EventBus) http.HandlerFunc {
 			return
 		}
 
+		// Build delivery instructions based on --pr flag
+		var delivery string
+		if body.PR {
+			delivery = "## Delivery\n\nWhen complete, commit your changes to the branch and push. Then open a pull request with a clear title and description summarizing what you changed and why."
+		} else {
+			delivery = "## Delivery\n\nWhen complete, commit your changes with a clear message, merge your branch into main, and push."
+		}
+
 		// Create task row
-		prompt := fmt.Sprintf("## Enlistment from %s\n\n**Summary:** %s\n\n%s", body.From, body.Summary, body.Details)
+		prompt := fmt.Sprintf("## Enlistment from %s\n\n**Summary:** %s\n\n%s\n\n%s", body.From, body.Summary, body.Details, delivery)
 		now := time.Now().Format(time.RFC3339)
 		taskResult, err := db.Exec(
 			`INSERT INTO claude_tasks (type, status, repo_path, prompt, intent, created_at, started_at)
