@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 func handleTmuxKill() http.HandlerFunc {

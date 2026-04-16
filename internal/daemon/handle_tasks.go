@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/ollama"
-	"github.com/mikehu/cmdr/internal/prompts"
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/ollama"
+	"github.com/cmdr-tool/cmdr/internal/prompts"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 // --- Task CRUD ---

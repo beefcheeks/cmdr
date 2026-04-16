@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/gitlocal"
+	"github.com/cmdr-tool/cmdr/internal/gitlocal"
 )
 
 // SyncCommits returns a task function that fetches new commits for all monitored repos.

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { ClaudeTask, GitCommit } from '$lib/api';
-	import { getClaudeTaskResult } from '$lib/api';
+	import { getClaudeTaskResult, getStatus } from '$lib/api';
+	import { onMount } from 'svelte';
 	import { ScanSearch } from 'lucide-svelte';
 	import { connection } from '$lib/events';
 	import { sessions, claudeSessions } from '$lib/sessionStore';
@@ -25,6 +26,16 @@
 		weekday: 'long',
 		month: 'long',
 		day: 'numeric'
+	});
+
+	let userName = $state('');
+	onMount(async () => {
+		try {
+			const status = await getStatus();
+			userName = status.user ?? '';
+		} catch {
+			// Silent — greeting falls back to just the time-of-day phrase.
+		}
 	});
 
 	// --- Diff modal ---
@@ -74,7 +85,7 @@
 
 <!-- Greeting -->
 <div class="mb-6">
-	<h1 class="font-display text-3xl font-bold text-bourbon-100 lowercase">{greeting}, mike</h1>
+	<h1 class="font-display text-3xl font-bold text-bourbon-100 lowercase">{greeting}{userName ? `, ${userName}` : ''}</h1>
 		<p class="text-bourbon-600 mt-1">
 			{dateStr}
 			&middot; {$sessions.length} session{$sessions.length !== 1 ? 's' : ''}

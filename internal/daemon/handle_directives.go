@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/prompts"
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/prompts"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 // handleCreateDirective creates a new claude_task in draft status.

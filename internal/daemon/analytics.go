@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/claude"
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/claude"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 // lastClearedDay tracks which day-of-year we've verified the slot for.

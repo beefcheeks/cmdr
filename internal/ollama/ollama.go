@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	baseURL = envOr("CMDR_OLLAMA_URL", "https://ollama.106source.ca")
+	baseURL = envOr("CMDR_OLLAMA_URL", "http://localhost:11434")
 	model   = envOr("CMDR_OLLAMA_MODEL", "gemma4:e4b")
 )
 

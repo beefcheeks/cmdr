@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 func handleTmuxSessions() http.HandlerFunc {

@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/claude"
-	"github.com/mikehu/cmdr/internal/prompts"
-	"github.com/mikehu/cmdr/internal/scheduler"
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/claude"
+	"github.com/cmdr-tool/cmdr/internal/prompts"
+	"github.com/cmdr-tool/cmdr/internal/scheduler"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 const (

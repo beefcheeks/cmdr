@@ -10,13 +10,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 
-	"github.com/mikehu/cmdr/internal/db"
-	"github.com/mikehu/cmdr/internal/scheduler"
+	"github.com/cmdr-tool/cmdr/internal/db"
+	"github.com/cmdr-tool/cmdr/internal/scheduler"
 )
 
 func httpAddr() string {
@@ -286,8 +287,18 @@ func handleStatus(s *scheduler.Scheduler) http.HandlerFunc {
 			"version": Version,
 			"pid":     os.Getpid(),
 			"tasks":   len(s.Tasks()),
+			"user":    currentUserName(),
 		})
 	}
+}
+
+// currentUserName returns the login username for display in the greeting.
+func currentUserName() string {
+	u, err := user.Current()
+	if err != nil {
+		return ""
+	}
+	return u.Username
 }
 
 func handleTasks(s *scheduler.Scheduler) http.HandlerFunc {

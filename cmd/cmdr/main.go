@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	cmdr "github.com/mikehu/cmdr"
-	"github.com/mikehu/cmdr/internal/daemon"
-	"github.com/mikehu/cmdr/internal/db"
-	"github.com/mikehu/cmdr/internal/scheduler"
+	cmdr "github.com/cmdr-tool/cmdr"
+	"github.com/cmdr-tool/cmdr/internal/daemon"
+	"github.com/cmdr-tool/cmdr/internal/db"
+	"github.com/cmdr-tool/cmdr/internal/scheduler"
 	"github.com/spf13/cobra"
 )
 

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os/exec"
 
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 func handleTmuxSwitch() http.HandlerFunc {

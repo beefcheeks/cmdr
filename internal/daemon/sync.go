@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/mikehu/cmdr/internal/tasks"
+	"github.com/cmdr-tool/cmdr/internal/tasks"
 )
 
 // SyncAllRepos fetches new commits for all monitored repos.

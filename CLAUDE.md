@@ -30,7 +30,7 @@ The production daemon (via launchd) serves both the API and the embedded SPA on 
 
 ### macOS Service (launchd)
 
-The daemon runs as a launchd user agent (`com.mikehu.cmdr`). `make install` handles building, plist installation, and service bootstrapping. Logs go to `/tmp/cmdr.out.log` and `/tmp/cmdr.err.log`.
+The daemon runs as a launchd user agent whose label is chosen at setup time (default `com.cmdr-tool.cmdr`) and stored in `~/.cmdr/cmdr.env`. `make install` runs `scripts/setup.sh` on first run to populate that env file, then renders `com.cmdr.plist.tpl` into `~/Library/LaunchAgents/<label>.plist`. Logs go to `/tmp/cmdr.out.log` and `/tmp/cmdr.err.log`.
 
 ## Conventions
 
@@ -49,7 +49,7 @@ The daemon runs as a launchd user agent (`com.mikehu.cmdr`). `make install` hand
 - **`internal/tmux/`** — Tmux integration: session listing (`list-panes -a`), session creation with worktree-aware naming (ported from `tmux-sessionizer.sh`).
 - **`internal/db/`** — SQLite database (`~/.cmdr/cmdr.db`) using `modernc.org/sqlite` (pure Go). Schema migrations run on startup. Tables: `repos` (local git repos by path), `commits` (tracked commits with seen state), `task_config` (schedule/enabled overrides).
 - **`internal/gitlocal/`** — Local git repo integration. Discovers repos under `CMDR_CODE_DIR` (default `~/Code`), fetches via `git fetch`, reads commits via `git log`, diffs via `difft` (falls back to `git show`). All operations use local filesystem, no GitHub API.
-- **`internal/ollama/`** — Thin Ollama API client for LLM-powered title summarization. Uses tool calling for structured output. Configured via `CMDR_OLLAMA_URL` (default `https://ollama.106source.ca`) and `CMDR_OLLAMA_MODEL` (default `gemma4`). Progressive enhancement — failures are silent.
+- **`internal/ollama/`** — Thin Ollama API client for LLM-powered title summarization. Uses tool calling for structured output. Configured via `CMDR_OLLAMA_URL` (default `http://localhost:11434`) and `CMDR_OLLAMA_MODEL` (default `gemma4:e4b`). Progressive enhancement — failures are silent.
 
 ### Frontend
 

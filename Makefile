@@ -1,11 +1,18 @@
 BIN_DIR     := $(HOME)/.local/bin
 APP_DIR     := /Applications
-PLIST_NAME  := com.mikehu.cmdr.plist
-LABEL       := com.mikehu.cmdr
+PLIST_TPL   := com.cmdr.plist.tpl
+CONFIG_FILE := $(HOME)/.cmdr/cmdr.env
 LAUNCH_DIR  := $(HOME)/Library/LaunchAgents
 GUI_DOMAIN  := gui/$(shell id -u)
 
-.PHONY: all build web go app install uninstall restart clean dev
+# Values read from $(CONFIG_FILE) (populated by scripts/setup.sh on first install)
+LABEL             = $(shell [ -f $(CONFIG_FILE) ] && grep ^CMDR_LABEL= $(CONFIG_FILE) | cut -d= -f2-)
+CMDR_CODE_DIR     = $(shell [ -f $(CONFIG_FILE) ] && grep ^CMDR_CODE_DIR= $(CONFIG_FILE) | cut -d= -f2-)
+CMDR_OLLAMA_URL   = $(shell [ -f $(CONFIG_FILE) ] && grep ^CMDR_OLLAMA_URL= $(CONFIG_FILE) | cut -d= -f2-)
+CMDR_OLLAMA_MODEL = $(shell [ -f $(CONFIG_FILE) ] && grep ^CMDR_OLLAMA_MODEL= $(CONFIG_FILE) | cut -d= -f2-)
+PLIST_NAME        = $(LABEL).plist
+
+.PHONY: all build web go app install setup uninstall restart clean dev test
 
 # Default: build everything
 all: build
@@ -38,20 +45,30 @@ app:
 	@rm -f build/cmdr-app
 
 # Full deploy: build → install binary + app → restart service
-install: build
+install: setup build
 	@mkdir -p $(BIN_DIR) $(LAUNCH_DIR)
-	@codesign -s "cmdr" -f cmdr
 	@cp cmdr $(BIN_DIR)/cmdr
+	@codesign --force --sign - $(BIN_DIR)/cmdr
+	@xattr -d com.apple.provenance $(BIN_DIR)/cmdr 2>/dev/null || true
 	@echo "cmdr: installed binary to $(BIN_DIR)/cmdr"
 	@launchctl bootout "$(GUI_DOMAIN)/$(LABEL)" 2>/dev/null || true
 	@sleep 1
-	@sed 's|__CMDR_BIN__|$(BIN_DIR)/cmdr|g' $(PLIST_NAME) > $(LAUNCH_DIR)/$(PLIST_NAME)
+	@sed -e 's|__LABEL__|$(LABEL)|g' \
+	     -e 's|__CMDR_BIN__|$(BIN_DIR)/cmdr|g' \
+	     -e 's|__CMDR_CODE_DIR__|$(CMDR_CODE_DIR)|g' \
+	     -e 's|__CMDR_OLLAMA_URL__|$(CMDR_OLLAMA_URL)|g' \
+	     -e 's|__CMDR_OLLAMA_MODEL__|$(CMDR_OLLAMA_MODEL)|g' \
+	     $(PLIST_TPL) > $(LAUNCH_DIR)/$(PLIST_NAME)
 	@launchctl bootstrap "$(GUI_DOMAIN)" "$(LAUNCH_DIR)/$(PLIST_NAME)"
 	@rm -f cmdr
 	@rsync -a --delete build/cmdr.app/ "$(APP_DIR)/cmdr.app/"
 	@echo "cmdr: installed app to $(APP_DIR)/cmdr.app"
 	@$(BIN_DIR)/cmdr init
 	@echo "cmdr: service installed and started ✓"
+
+# Run first-run setup if config is missing
+setup:
+	@[ -f $(CONFIG_FILE) ] || bash scripts/setup.sh
 
 # Stop and remove service
 uninstall:

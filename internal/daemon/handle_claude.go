@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/mikehu/cmdr/internal/claude"
+	"github.com/cmdr-tool/cmdr/internal/claude"
 )
 
 func handleClaudeSessions() http.HandlerFunc {

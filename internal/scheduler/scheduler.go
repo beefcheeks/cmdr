@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/mikehu/cmdr/internal/tasks"
+	"github.com/cmdr-tool/cmdr/internal/tasks"
 	"github.com/robfig/cron/v3"
 )
 

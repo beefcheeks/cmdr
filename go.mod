@@ -1,4 +1,4 @@
-module github.com/mikehu/cmdr
+module github.com/cmdr-tool/cmdr
 
 go 1.26.1
 

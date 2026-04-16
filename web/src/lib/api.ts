@@ -4,6 +4,7 @@ export interface DaemonStatus {
 	pid: number;
 	version: string;
 	tasks: number;
+	user: string;
 }
 
 export interface Task {

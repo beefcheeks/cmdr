@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/tasks"
+	"github.com/cmdr-tool/cmdr/internal/tasks"
 )
 
 type squadMember struct {

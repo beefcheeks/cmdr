@@ -3,7 +3,7 @@
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.mikehu.cmdr</string>
+    <string>__LABEL__</string>
     <key>ProgramArguments</key>
     <array>
       <string>__CMDR_BIN__</string>
@@ -23,11 +23,11 @@
       <key>PATH</key>
       <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
       <key>CMDR_CODE_DIR</key>
-      <string>~/Code</string>
+      <string>__CMDR_CODE_DIR__</string>
       <key>CMDR_OLLAMA_URL</key>
-      <string>https://ollama.106source.ca</string>
+      <string>__CMDR_OLLAMA_URL__</string>
       <key>CMDR_OLLAMA_MODEL</key>
-      <string>gemma4:e4b</string>
+      <string>__CMDR_OLLAMA_MODEL__</string>
     </dict>
   </dict>
 </plist>

@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/tmux"
+	"github.com/cmdr-tool/cmdr/internal/tmux"
 )
 
 // --- Headless task runner (claude -p with streaming) ---

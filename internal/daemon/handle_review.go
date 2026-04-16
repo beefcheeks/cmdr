@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikehu/cmdr/internal/gitlocal"
-	"github.com/mikehu/cmdr/internal/prompts"
+	"github.com/cmdr-tool/cmdr/internal/gitlocal"
+	"github.com/cmdr-tool/cmdr/internal/prompts"
 )
 
 // --- Review Comments ---

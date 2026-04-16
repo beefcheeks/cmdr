@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/mikehu/cmdr/internal/gitlocal"
-	"github.com/mikehu/cmdr/internal/tasks"
+	"github.com/cmdr-tool/cmdr/internal/gitlocal"
+	"github.com/cmdr-tool/cmdr/internal/tasks"
 )
 
 // cachedGitAuthor stores the current user's git author name, loaded once.
