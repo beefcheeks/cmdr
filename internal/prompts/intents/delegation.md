@@ -15,4 +15,4 @@ You have been enlisted by a squad member to help with cross-repo work. Another C
    - Any decisions you made where the request was ambiguous
    - Anything the requester needs to know (new env vars, migration steps, etc.)
 
-5. **Exit when done** — Use `/exit` after merging and writing the debrief.
+5. **Signal completion** — After merging and writing the debrief, your work is done.

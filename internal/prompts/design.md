@@ -37,7 +37,7 @@ Use diagrams where they help — mermaid flowcharts, sequence diagrams, or entit
 
 When the design is settled and the reviewer approves, write the final ADR to `docs/` in the working directory (e.g. `docs/ADR-0015-feature-name.md`). The system will pick it up from there for review before implementation begins.
 
-After writing the ADR file, tell the reviewer the design phase is complete and they can close this session. Use `/exit` to end the session — do NOT continue with implementation.
+After writing the ADR file, tell the reviewer the design phase is complete and they can close this session. Do NOT continue with implementation.
 
 ## What NOT to do
 
