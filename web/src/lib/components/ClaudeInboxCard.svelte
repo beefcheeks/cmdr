@@ -122,7 +122,7 @@
 					<!-- Status icon -->
 					<div class="pt-0.5 shrink-0">
 						{#if task.status === 'draft'}
-							<span class="text-cmd-400"><Pencil size={14} /></span>
+							<span class="text-run-400"><Pencil size={14} /></span>
 						{:else if task.type === 'ask' && task.status === 'running'}
 							<div class="w-3.5 h-3.5 border-2 border-bourbon-700 border-t-cmd-500 rounded-full animate-spin"></div>
 						{:else if task.status === 'running' || task.status === 'pending'}
