@@ -40,7 +40,7 @@ go:
 summarize:
 	@echo "cmdr: building summarizer..."
 	@mkdir -p build
-	@swiftc -O -o build/cmdr-summarize tools/cmdr-summarize/main.swift -framework FoundationModels 2>/dev/null \
+	@swiftc -O -parse-as-library -o build/cmdr-summarize tools/cmdr-summarize/main.swift -framework FoundationModels 2>/dev/null \
 		|| echo "cmdr: skipped cmdr-summarize (requires macOS 15.1+ SDK)"
 
 # Build macOS app bundle (frameless webview wrapper)
