@@ -12,7 +12,7 @@ CMDR_OLLAMA_URL   = $(shell [ -f $(CONFIG_FILE) ] && grep ^CMDR_OLLAMA_URL= $(CO
 CMDR_OLLAMA_MODEL = $(shell [ -f $(CONFIG_FILE) ] && grep ^CMDR_OLLAMA_MODEL= $(CONFIG_FILE) | cut -d= -f2-)
 PLIST_NAME        = $(LABEL).plist
 
-.PHONY: all build web go app install setup uninstall restart clean dev test
+.PHONY: all build web go app install setup configure uninstall restart clean dev test
 
 # Default: build everything
 all: build
@@ -69,6 +69,10 @@ install: setup build
 # Run first-run setup if config is missing
 setup:
 	@[ -f $(CONFIG_FILE) ] || bash scripts/setup.sh
+
+# Re-run setup (edit config) and regenerate plist
+configure:
+	@bash scripts/setup.sh
 
 # Stop and remove service
 uninstall:
