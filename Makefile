@@ -55,15 +55,19 @@ app:
 	@cp app/assets/menubarTemplate.png app/assets/menubarTemplate@2x.png build/cmdr.app/Contents/Resources/
 	@rm -f build/cmdr-app
 
+# Codesign helper: uses "cmdr" identity if available, falls back to ad-hoc.
+# Named identity preserves TCC grants across rebuilds; ad-hoc works everywhere.
+SIGN_ID := $(shell security find-identity -v -p codesigning 2>/dev/null | grep -q '"cmdr"' && echo "cmdr" || echo "-")
+
 # Full deploy: build → install binary + app → restart service
 install: setup build
 	@mkdir -p $(BIN_DIR) $(LAUNCH_DIR)
 	@cp cmdr $(BIN_DIR)/cmdr
-	@codesign --force --sign "cmdr" --options runtime $(BIN_DIR)/cmdr
+	@codesign --force --sign "$(SIGN_ID)" --options runtime $(BIN_DIR)/cmdr
 	@xattr -d com.apple.provenance $(BIN_DIR)/cmdr 2>/dev/null || true
 	@if [ -f build/cmdr-summarize ]; then \
 		cp build/cmdr-summarize $(BIN_DIR)/cmdr-summarize; \
-		codesign --force --sign "cmdr" --options runtime $(BIN_DIR)/cmdr-summarize; \
+		codesign --force --sign "$(SIGN_ID)" --options runtime $(BIN_DIR)/cmdr-summarize; \
 		xattr -d com.apple.provenance $(BIN_DIR)/cmdr-summarize 2>/dev/null || true; \
 	fi
 	@echo "cmdr: installed binary to $(BIN_DIR)/cmdr"
