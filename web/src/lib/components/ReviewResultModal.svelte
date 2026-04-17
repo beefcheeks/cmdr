@@ -420,7 +420,7 @@
 		{/if}
 
 		<!-- Footer -->
-		{#if status === 'completed' || status === 'failed'}
+		{#if status === 'resolved' || status === 'completed' || status === 'failed'}
 			<div class="flex items-center justify-between px-6 py-3 border-t border-bourbon-800 shrink-0">
 				<div class="flex items-center gap-3">
 					<button

@@ -425,11 +425,15 @@ export interface ClaudeTask {
 	headless?: boolean;
 }
 
-// A task is "terminal" when its lifecycle is fully done: failed tasks, or
-// completed tasks (artifact consumed / implementation spawned / no next step).
-// "Resolved" tasks still have pending user action (review findings, ADR, open PR).
+// A task is "terminal" when its lifecycle is fully done and there's nothing
+// worth referencing: failed, artifact consumed (review→implementation),
+// or generic directives. Ask and analysis tasks remain non-terminal even
+// when completed because their results are reference material.
 export function isTerminalTask(task: ClaudeTask): boolean {
-	return task.status === 'failed' || task.status === 'completed';
+	if (task.status === 'failed') return true;
+	if (task.status !== 'completed') return false;
+	if (task.type === 'ask' || task.intent === 'analysis') return false;
+	return true;
 }
 
 export interface ClaudeTaskResult {
