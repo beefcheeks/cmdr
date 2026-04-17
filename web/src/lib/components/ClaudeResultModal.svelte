@@ -1,7 +1,6 @@
 <script lang="ts">
-	import type { Component } from 'svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { X, CircleQuestionMark, Terminal, Trash2, List, Copy, Check } from 'lucide-svelte';
+	import { X, CircleQuestionMark, Terminal, Trash2, List } from 'lucide-svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import { getClaudeTaskResult, continueAsk } from '$lib/api';
 	import { dismiss as dismissTask } from '$lib/taskStore';
@@ -12,7 +11,7 @@
 		onclose,
 		title = 'Ask Claude',
 		titleClass = 'text-run-500',
-		icon: Icon = CircleQuestionMark as Component<{ size: number; class: string }>,
+		icon: Icon = CircleQuestionMark,
 		emptyHint = 'thinking',
 		oncontinue,
 	}: {
@@ -20,7 +19,7 @@
 		onclose: () => void;
 		title?: string;
 		titleClass?: string;
-		icon?: Component<{ size: number; class: string }>;
+		icon?: typeof CircleQuestionMark;
 		emptyHint?: string;
 		oncontinue?: (() => Promise<void>) | null;
 	} = $props();
@@ -30,7 +29,6 @@
 	let toolStatus = $state('');
 	let errorMsg = $state('');
 	let showToc = $state(false);
-	let copiedSection = $state<string | null>(null);
 	let bodyEl: HTMLDivElement | undefined = $state();
 	let unsub: (() => void) | null = null;
 
