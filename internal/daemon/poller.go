@@ -84,8 +84,8 @@ func pollTick(bus *EventBus, s *scheduler.Scheduler, db *sql.DB, away bool, tick
 		publishAnalytics(bus, db, now)
 	}
 
-	// Check for completed tasks every 60s (12 ticks)
-	if tickCount%12 == 0 {
+	// Check for completed tasks every 30s (6 ticks)
+	if tickCount%6 == 0 {
 		// Only check task lifecycle if tmux listing succeeded —
 		// an empty list would falsely mark all running tasks as completed
 		if termErr == nil {
@@ -462,8 +462,13 @@ func worktreeAlive(repoPath, worktreeName string) bool {
 	if err != nil {
 		return false
 	}
-	target := filepath.Join(".claude", "worktrees", worktreeName)
-	return strings.Contains(string(out), target)
+	s := string(out)
+	// Check both raw name and sanitized (/ → +) form
+	if strings.Contains(s, filepath.Join(".claude", "worktrees", worktreeName)) {
+		return true
+	}
+	sanitized := strings.ReplaceAll(worktreeName, "/", "+")
+	return sanitized != worktreeName && strings.Contains(s, filepath.Join(".claude", "worktrees", sanitized))
 }
 
 // isPROpen checks if a PR URL is still open (not merged or closed).
@@ -500,7 +505,7 @@ func scrapePaneForPR(target string) string {
 // scrapeADRFromWorktree finds an ADR-*.md file in the worktree's docs/ directory
 // that was modified after the task started. Ignores inherited ADRs from before the task.
 func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) string {
-	docsDir := filepath.Join(repoPath, ".claude", "worktrees", worktreeName, "docs")
+	docsDir := filepath.Join(worktreeDir(repoPath, worktreeName), "docs")
 	entries, err := os.ReadDir(docsDir)
 	if err != nil {
 		return ""

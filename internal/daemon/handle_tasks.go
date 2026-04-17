@@ -802,9 +802,22 @@ func cleanupAllTaskWorktrees(db *sql.DB) {
 	}
 }
 
+// worktreeDir resolves the actual worktree directory name. Claude Code
+// sanitizes worktree names by replacing "/" with "+" in directory names,
+// so "mikehu/feature-1" becomes "mikehu+feature-1" on disk. We try the
+// sanitized form first (most common), then fall back to the raw name.
+func worktreeDir(repoPath, worktreeName string) string {
+	sanitized := strings.ReplaceAll(worktreeName, "/", "+")
+	candidate := filepath.Join(repoPath, ".claude", "worktrees", sanitized)
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
+	}
+	return filepath.Join(repoPath, ".claude", "worktrees", worktreeName)
+}
+
 // removeWorktree removes a git worktree.
 func removeWorktree(repoPath string, taskID int, worktreeName string) {
-	worktreePath := filepath.Join(repoPath, ".claude", "worktrees", worktreeName)
+	worktreePath := worktreeDir(repoPath, worktreeName)
 	if _, err := os.Stat(worktreePath); err == nil {
 		cmd := exec.Command("git", "-C", repoPath, "worktree", "remove", worktreePath, "--force")
 		if out, err := cmd.CombinedOutput(); err != nil {
