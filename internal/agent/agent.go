@@ -102,6 +102,7 @@ type InteractiveConfig struct {
 	TaskName     string // e.g. "cmdr-task-42"
 	SystemPrompt string
 	PromptFile   string // path to file piped via stdin
+	SessionID    string // pre-assigned session ID for later resume (adapters may ignore)
 }
 
 // --- Adapter registry ---

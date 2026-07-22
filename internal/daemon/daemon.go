@@ -361,6 +361,7 @@ func registerAPI(mux *http.ServeMux, s *scheduler.Scheduler, bus *EventBus, data
 	mux.HandleFunc("/api/squads/create", handleCreateSquad(database))
 	mux.HandleFunc("/api/squads/delete", handleDeleteSquad(database))
 	mux.HandleFunc("/api/squads/enlist", handleEnlist(database, bus))
+	mux.HandleFunc("/api/squads/amend", handleAmend(database, bus))
 	mux.HandleFunc("/api/squads/delegations", handleListDelegations(database))
 	mux.HandleFunc("/api/squads/delegation-summary", handleDelegationSummary(database))
 

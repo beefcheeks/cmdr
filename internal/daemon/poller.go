@@ -352,11 +352,15 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, termSessions []terminal.Sessio
 			if existingResult != "" {
 				continue
 			}
-			if debriefPath, debrief := scrapeDebrief(t.id); debrief != "" {
+			if debriefPath, debrief := scrapeDebrief(db, t.id); debrief != "" {
 				now := time.Now().Format(time.RFC3339)
 				db.Exec(`UPDATE agent_tasks SET status='completed', result=?, completed_at=? WHERE id=?`,
 					debrief, now, t.id)
-				os.Remove(debriefPath)
+				// Legacy /tmp debriefs are transient; folder-based debriefs stay
+				// with the leader as the consolidated record.
+				if strings.HasPrefix(debriefPath, os.TempDir()) {
+					os.Remove(debriefPath)
+				}
 				bus.Publish(Event{Type: "agent:task", Data: map[string]any{
 					"id": t.id, "status": "completed",
 				}})
@@ -558,10 +562,16 @@ func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) string {
 	return string(data)
 }
 
-// scrapeDebrief checks if a delegation debrief file exists at /tmp/cmdr/debrief-{taskID}.md.
+// scrapeDebrief checks if a delegation debrief file exists at the path recorded
+// on the delegation (leader-side .agents/enlistments folder), falling back to
+// the legacy /tmp/cmdr/debrief-{taskID}.md location.
 // Returns the file path and contents, or empty strings if not found.
-func scrapeDebrief(taskID int) (string, string) {
-	path := filepath.Join(os.TempDir(), "cmdr", fmt.Sprintf("debrief-%d.md", taskID))
+func scrapeDebrief(db *sql.DB, taskID int) (string, string) {
+	var path string
+	db.QueryRow(`SELECT COALESCE(debrief_path, '') FROM delegations WHERE task_id = ?`, taskID).Scan(&path)
+	if path == "" {
+		path = filepath.Join(os.TempDir(), "cmdr", fmt.Sprintf("debrief-%d.md", taskID))
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", ""

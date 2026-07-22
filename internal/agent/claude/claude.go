@@ -165,6 +165,10 @@ func (a *Adapter) InteractiveCommand(cfg agent.InteractiveConfig) (string, error
 		baseCmd = fmt.Sprintf("claude --name '%s'", cfg.TaskName)
 	}
 
+	if cfg.SessionID != "" {
+		baseCmd += fmt.Sprintf(" --session-id '%s'", cfg.SessionID)
+	}
+
 	if cfg.SystemPrompt != "" {
 		escaped := strings.ReplaceAll(cfg.SystemPrompt, "'", "'\\''")
 		return fmt.Sprintf("exec %s --append-system-prompt '%s' < '%s'", baseCmd, escaped, cfg.PromptFile), nil

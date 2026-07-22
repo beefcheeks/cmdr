@@ -52,6 +52,7 @@ actively check enlistment status, use:
 	root.AddCommand(initCmd())
 	root.AddCommand(squadCmd())
 	root.AddCommand(enlistCmd())
+	root.AddCommand(amendCmd())
 	root.AddCommand(missionsCmd())
 	root.AddCommand(taskCmd())
 	root.AddCommand(debriefCmd())
@@ -374,7 +375,7 @@ func installEnlistCommand(path string) error {
 	bin := cmdrBin()
 	content := fmt.Sprintf(`---
 name: enlist
-description: Enlist a squad member to help with cross-repo work.
+description: Enlist a squad member to help with cross-repo work. Only for NEW delegations — if the target repo already has an active or completed enlistment for this effort, use `+"`"+`cmdr amend`+"`"+` on the existing task instead of enlisting again.
 ---
 
 Enlist a squad member to help with cross-repo work. Use when your task requires changes in a sibling repository.
@@ -382,6 +383,24 @@ Enlist a squad member to help with cross-repo work. Use when your task requires 
 ## Find your squad
 
 Your squad info was provided at session start. If you need it again: `+"``"+`%s squad`+"``"+`
+
+## MANDATORY: check for an existing enlistment first
+
+Before every dispatch, check whether the target repo is already enlisted:
+
+`+"```bash"+`
+%s debrief --squad {squad-name}
+`+"```"+`
+
+- If an open or recently completed task already covers the target repo for this effort, do **not** enlist. Send your additional/corrected instructions to that session instead:
+
+`+"```bash"+`
+%s amend {taskId} --details "Amended orders — precise, self-contained instructions building on the original ask"
+`+"```"+`
+
+  The enlisted session keeps its full context, worktree, and branch; it applies the amendment on top of its existing work and rewrites its debrief. If `+"`"+`amend`+"`"+` fails because the worktree is gone, only then enlist fresh.
+
+- Only enlist when no enlistment exists for that repo. (The backend also enforces this: enlisting a repo with an open enlistment auto-forwards your orders as an amendment and reports the existing taskId.)
 
 ## Always deliver as a PR
 
@@ -395,11 +414,19 @@ Include a `+"``"+`Companion PR: <branch-or-url>`+"``"+` line at the end of `+"``
 
 `+"```bash"+`
 %s enlist --squad {squad-name} --from {your-alias} --to {target-alias} --pr \
+  --effort {effort-slug} --slug {enlistment-slug} \
   --summary "Brief description of what you need" \
   --details "Full specification — be precise about interfaces, types, behavior. End with: 'Companion PR: <branch-or-url>'"
 `+"```"+`
 
 The --details should have enough context for someone unfamiliar with your repo to implement the change — include expected interfaces, types, endpoints, and behavior.
+
+### Effort and slug
+
+Orders and debriefs are recorded as markdown (with frontmatter metadata) under `+"``"+`.agents/enlistments/{effort}/`+"``"+` in your working tree — this folder is the consolidated record of the coordinated cross-repo work.
+
+- `+"``"+`--effort`+"``"+`: short kebab-slug naming the overall cross-repo effort (e.g. `+"``"+`support-x-feature`+"``"+`). **Reuse the same effort slug for every enlistment belonging to the same coordinated change** so they group in one folder.
+- `+"``"+`--slug`+"``"+`: short kebab-slug for this specific enlistment (e.g. `+"``"+`support-x-feature-on-api`+"``"+`). Pick something more apt than the summary when the summary is long; omitted, cmdr slugifies the summary.
 
 ## After dispatching
 
@@ -409,7 +436,9 @@ Continue with parts of your task that don't depend on the enlisted work. Auto-no
 %s debrief --squad {squad-name}    # all enlistments by this squad member
 %s task {taskId}                   # status + debrief for one task
 `+"```"+`
-`, bin, bin, bin, bin)
+
+Debriefs also land in `+"``"+`.agents/enlistments/{effort}/debrief-{taskId}_{slug}.md`+"``"+` next to the orders; read them there when consolidating the effort. Prior debriefs from before an amendment are archived alongside as `+"``"+`debrief-…N.md`+"``"+`.
+`, bin, bin, bin, bin, bin, bin)
 	return os.WriteFile(path, []byte(content), 0o644)
 }
 
@@ -545,7 +574,7 @@ func mergeHooks(path string) error {
 }
 
 func enlistCmd() *cobra.Command {
-	var squad, from, to, summary, details string
+	var squad, from, to, summary, details, effort, slug string
 	var pr bool
 	cmd := &cobra.Command{
 		Use:   "enlist",
@@ -556,15 +585,25 @@ Dispatches a task to a sibling repo's Claude session and returns a taskId.
 Completion (including the enlisted session's debrief) is normally delivered
 as context on the next user prompt via the UserPromptSubmit hook. To check
 status mid-run, use 'cmdr debrief --squad <name>'. Continue with non-blocking
-work while the enlistment runs.`,
+work while the enlistment runs.
+
+Enlistment orders and debriefs are recorded under .agents/enlistments/<effort>/
+in your current working tree. Reuse the same --effort across related
+enlistments to group a coordinated cross-repo change in one folder.
+
+If the target repo already has an open enlistment from this squad, the orders
+are forwarded to that session as an amendment instead of spawning a new one
+(same behavior as 'cmdr amend').`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if squad == "" || from == "" || to == "" || summary == "" {
 				return fmt.Errorf("--squad, --from, --to, and --summary are required")
 			}
 
+			leaderCwd, _ := os.Getwd()
 			body, _ := json.Marshal(map[string]any{
 				"squad": squad, "from": from, "to": to,
 				"summary": summary, "details": details, "pr": pr,
+				"effort": effort, "slug": slug, "leaderCwd": leaderCwd,
 			})
 			resp, err := daemon.Client().Post("http://cmdr/api/squads/enlist", "application/json", bytes.NewReader(body))
 			if err != nil {
@@ -583,10 +622,19 @@ work while the enlistment runs.`,
 			}
 
 			taskID := int(result["taskId"].(float64))
+			if fwd, _ := result["forwarded"].(bool); fwd {
+				note, _ := result["note"].(string)
+				method, _ := result["method"].(string)
+				fmt.Printf("cmdr: %s (delivery: %s)\n", note, method)
+				return nil
+			}
 			branch := result["branch"].(string)
 			session := result["session"].(string)
 			fmt.Printf("cmdr: enlistment dispatched (task %d, squad %s, %s → %s)\n", taskID, squad, from, to)
 			fmt.Printf("cmdr: branch %s, session %s\n", branch, session)
+			if eff, _ := result["effort"].(string); eff != "" {
+				fmt.Printf("cmdr: orders + debrief tracked in .agents/enlistments/%s/\n", eff)
+			}
 			return nil
 		},
 	}
@@ -596,6 +644,58 @@ work while the enlistment runs.`,
 	cmd.Flags().StringVar(&summary, "summary", "", "Brief description of what you need")
 	cmd.Flags().StringVar(&details, "details", "", "Full specification")
 	cmd.Flags().BoolVar(&pr, "pr", false, "Open a pull request instead of merging directly")
+	cmd.Flags().StringVar(&effort, "effort", "", "Kebab-slug grouping related enlistments under .agents/enlistments/<effort>/ (defaults to slug)")
+	cmd.Flags().StringVar(&slug, "slug", "", "Kebab-slug for this enlistment's files (defaults to slugified summary)")
+	return cmd
+}
+
+func amendCmd() *cobra.Command {
+	var details string
+	cmd := &cobra.Command{
+		Use:   "amend <taskId>",
+		Short: "Send amended orders to an existing enlistment",
+		Long: `Send amended orders to an existing enlistment.
+
+Routes additional or corrected instructions to the enlisted session for the
+given taskId instead of spawning a new one. If the session's terminal window
+is still open the amendment is injected live; otherwise the recorded agent
+session is resumed in its worktree. The task returns to 'running' and a fresh
+debrief is expected on completion.
+
+Fails if the enlistment's worktree is gone — re-enlist in that case.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var id int
+			if _, err := fmt.Sscanf(args[0], "%d", &id); err != nil {
+				return fmt.Errorf("invalid task id: %s", args[0])
+			}
+			if details == "" {
+				return fmt.Errorf("--details is required")
+			}
+
+			body, _ := json.Marshal(map[string]any{"taskId": id, "details": details})
+			resp, err := daemon.Client().Post("http://cmdr/api/squads/amend", "application/json", bytes.NewReader(body))
+			if err != nil {
+				return fmt.Errorf("daemon unreachable: %w", err)
+			}
+			defer resp.Body.Close()
+
+			var result map[string]any
+			json.NewDecoder(resp.Body).Decode(&result)
+
+			if resp.StatusCode != 200 {
+				if errMsg, ok := result["error"].(string); ok {
+					return fmt.Errorf("%s", errMsg)
+				}
+				return fmt.Errorf("amend failed (status %d)", resp.StatusCode)
+			}
+
+			method, _ := result["method"].(string)
+			fmt.Printf("cmdr: amended orders delivered to task %d (delivery: %s)\n", id, method)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&details, "details", "", "Amended/additional instructions (required)")
 	return cmd
 }
 

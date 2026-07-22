@@ -439,6 +439,7 @@ type TaskLaunchConfig struct {
 	RepoPath       string
 	WindowPrefix   string // e.g. "refactor", "task" → "refactor-42", "task-42"
 	WorktreePrefix string // overrides WindowPrefix for worktree naming; defaults to WindowPrefix if empty
+	SessionID      string // pre-assigned agent session ID for later resume (optional)
 }
 
 // TaskLaunchResult is returned from launchTask with session/window info.
@@ -502,6 +503,7 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 		TaskName:     fmt.Sprintf("cmdr-task-%d", cfg.TaskID),
 		SystemPrompt: systemPrompt,
 		PromptFile:   promptFile,
+		SessionID:    cfg.SessionID,
 	})
 	if err != nil {
 		return TaskLaunchResult{}, fmt.Errorf("agent command: %w", err)
@@ -519,8 +521,8 @@ func launchTask(db *sql.DB, bus *EventBus, cfg TaskLaunchConfig) (TaskLaunchResu
 
 	// Update task status
 	now := time.Now().Format(time.RFC3339)
-	db.Exec(`UPDATE agent_tasks SET status='running', intent=?, worktree=?, terminal_target=?, started_at=? WHERE id=?`,
-		cfg.Intent, worktreeName, target, now, cfg.TaskID)
+	db.Exec(`UPDATE agent_tasks SET status='running', intent=?, worktree=?, terminal_target=?, agent_session_id=?, started_at=? WHERE id=?`,
+		cfg.Intent, worktreeName, target, cfg.SessionID, now, cfg.TaskID)
 	bus.Publish(Event{Type: "agent:task", Data: map[string]any{
 		"id": cfg.TaskID, "status": "running", "intent": cfg.Intent, "repoPath": cfg.RepoPath,
 	}})

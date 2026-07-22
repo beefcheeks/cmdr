@@ -364,6 +364,8 @@ export interface Delegation {
 	result: string;
 	createdAt: string;
 	completedAt: string;
+	effort?: string;
+	leaderCwd?: string;
 }
 
 export function getDelegationSummary(): Promise<DelegationSummary[]> {
