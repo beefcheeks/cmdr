@@ -67,6 +67,9 @@
 		await syncRepos();
 		setTimeout(async () => {
 			repos = await getRepos();
+			if (showAddRepo) {
+				discovered = await discoverRepos();
+			}
 			syncing = false;
 		}, 3000);
 	}
