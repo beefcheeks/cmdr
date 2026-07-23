@@ -378,7 +378,7 @@
 						class="justify-self-end flex items-center gap-1.5 text-[10px] font-mono text-cmd-400 hover:text-cmd-300 transition-colors cursor-pointer"
 					>
 						<Terminal size={12} />
-						Continue in interactive session
+						Continue session
 					</button>
 				{/if}
 			</div>
