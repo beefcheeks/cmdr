@@ -39,7 +39,11 @@ Use diagrams where they help — mermaid flowcharts, sequence diagrams, or entit
 
 ## Delivering the design document
 
-When the design is settled and the reviewer approves, write the document to `docs/` in the working directory. Use the prefix `DESIGN-` with a descriptive name (e.g. `docs/DESIGN-review-root-cause-analysis.md`).
+When the design is settled and the reviewer approves, write the document to the **relative** path `docs/DESIGN-<descriptive-kebab-slug>.md` (e.g. `docs/DESIGN-mongodb-audit-log.md`) — resolved against your current working directory, NOT an absolute project path.
+
+You are running inside a dedicated git worktree (its path contains `.claude/worktrees/`), which is deliberately separate from the main repo checkout. Write the file with a path relative to your cwd — `docs/DESIGN-...md` — and never substitute the project's "real" location like `/Users/you/Code/<project>/docs/...`. The orchestrator scans **this worktree's** `docs/` for the completed design; a file written into the main checkout (or anywhere outside this worktree) is invisible to it, and the task stays stuck in "running" forever.
+
+The filename **MUST** match the pattern `DESIGN-<descriptive-kebab-slug>.md` exactly, even if the repo's `docs/` folder uses a different convention for existing files (`ADR-NNNN-*.md`, `DESIGN_*.md` with underscores, `RFC-*.md`, etc.). Do not number the file, do not follow neighboring patterns, do not substitute an underscore for the hyphen. Detection scans for files matching exactly `DESIGN-*.md` — any other name leaves the task stuck in "running" forever, and your work won't be picked up.
 
 After writing the file, tell the reviewer the design phase is complete and they can close this session. Do NOT continue with implementation.
 
