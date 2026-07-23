@@ -662,6 +662,23 @@ export function rerunTask(id: number): Promise<{ id: number; status: string }> {
 	});
 }
 
+export interface RefreshDesignResponse {
+	found: boolean;
+	changed?: boolean;
+	committed?: boolean;
+	newMtime?: string;
+	capturedAt?: string;
+	result?: string;
+}
+
+export function refreshDesign(id: number, commit = false): Promise<RefreshDesignResponse> {
+	return request('/agent/tasks/refresh-design', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ id, commit })
+	});
+}
+
 export function restoreTask(id: number): Promise<{ status: string }> {
 	return request('/agent/tasks/restore', {
 		method: 'POST',

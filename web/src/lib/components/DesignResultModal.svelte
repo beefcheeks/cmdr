@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { X, Wrench, FileCheck, Trash2, Pencil, MessageSquarePlus, RotateCcw } from 'lucide-svelte';
+	import { X, Wrench, FileCheck, Trash2, Pencil, MessageSquarePlus, RotateCcw, RefreshCw } from 'lucide-svelte';
 	import { renderMarkdown, ensurePrismLoaded } from '$lib/markdown';
 	import { renderMermaidBlocks } from '$lib/mermaid';
-	import { spawnTask, reviseTask } from '$lib/api';
+	import { spawnTask, reviseTask, refreshDesign } from '$lib/api';
 	import { playSound, SFX } from '$lib/sounds';
 	import { loadAnnotations, saveAnnotations, type Annotation } from '$lib/annotations';
 	import LaunchGuard from './LaunchGuard.svelte';
@@ -91,6 +91,72 @@
 		editingNoteDraft = '';
 	}
 
+	// --- Refresh design ---
+	let refreshing = $state(false);
+	let refreshNotice = $state<string | null>(null);
+	let pendingRefresh = $state<{ newMtime: string; capturedAt: string } | null>(null);
+	let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+
+	const canRefresh = $derived(intent === 'refactor' || intent === 'new-feature');
+
+	function setNotice(msg: string | null) {
+		refreshNotice = msg;
+		if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
+		if (msg) {
+			noticeTimer = setTimeout(() => { refreshNotice = null; noticeTimer = null; }, 3000);
+		}
+	}
+
+	function fmtTime(iso: string): string {
+		if (!iso) return '';
+		const d = new Date(iso);
+		if (isNaN(d.getTime())) return iso;
+		return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+	}
+
+	async function handleRefresh() {
+		if (refreshing) return;
+		refreshing = true;
+		setNotice(null);
+		pendingRefresh = null;
+		try {
+			const res = await refreshDesign(taskId, false);
+			if (!res.found) {
+				setNotice('No design doc found in worktree');
+			} else if (!res.changed) {
+				setNotice('No newer design found');
+			} else {
+				pendingRefresh = { newMtime: res.newMtime ?? '', capturedAt: res.capturedAt ?? '' };
+			}
+		} catch {
+			setNotice('Refresh failed');
+		} finally {
+			refreshing = false;
+		}
+	}
+
+	async function confirmRefresh() {
+		if (!pendingRefresh) return;
+		refreshing = true;
+		try {
+			const res = await refreshDesign(taskId, true);
+			if (res.committed && res.result) {
+				onupdate?.(res.result);
+				setNotice('Design updated');
+			}
+			pendingRefresh = null;
+		} catch {
+			setNotice('Refresh failed');
+		} finally {
+			refreshing = false;
+		}
+	}
+
+	function cancelRefresh() {
+		pendingRefresh = null;
+		setNotice(null);
+	}
+
 	// --- Revise ---
 	async function handleRevise() {
 		if (annotations.length === 0) return;
@@ -121,6 +187,17 @@
 		<div class="flex items-center justify-between px-6 py-4 border-b border-bourbon-800 shrink-0">
 			<div class="flex items-center gap-3">
 				<h2 class="font-display text-xs font-bold uppercase tracking-widest text-run-500">Design Review</h2>
+				{#if canRefresh}
+					<button
+						onclick={handleRefresh}
+						disabled={refreshing}
+						title="Re-pull latest DESIGN-*.md from worktree"
+						class="flex items-center gap-1 text-[10px] font-mono text-bourbon-500 hover:text-run-400 transition-colors cursor-pointer disabled:opacity-50"
+					>
+						<RefreshCw size={10} class={refreshing ? 'animate-spin' : ''} />
+						refresh
+					</button>
+				{/if}
 			</div>
 			<button
 				onclick={onclose}
@@ -129,6 +206,23 @@
 				<X size={18} />
 			</button>
 		</div>
+
+		<!-- Refresh notice / confirm -->
+		{#if pendingRefresh}
+			<div class="flex items-center justify-between gap-3 px-6 py-2 border-b border-bourbon-800 bg-run-500/5 shrink-0">
+				<span class="text-[10px] font-mono text-run-300">
+					Newer design saved {fmtTime(pendingRefresh.newMtime)} · original captured {fmtTime(pendingRefresh.capturedAt)}
+				</span>
+				<div class="flex items-center gap-3">
+					<button onclick={cancelRefresh} class="text-[10px] font-mono text-bourbon-500 hover:text-bourbon-300 cursor-pointer">cancel</button>
+					<button onclick={confirmRefresh} disabled={refreshing} class="text-[10px] font-mono text-run-400 hover:text-run-300 cursor-pointer disabled:opacity-50">replace</button>
+				</div>
+			</div>
+		{:else if refreshNotice}
+			<div class="px-6 py-2 border-b border-bourbon-800 bg-bourbon-950 shrink-0">
+				<span class="text-[10px] font-mono text-bourbon-500">{refreshNotice}</span>
+			</div>
+		{/if}
 
 		<!-- Body: rendered markdown with annotation layer -->
 		<div bind:this={bodyEl} class="overflow-auto flex-1 px-6 py-4 bg-bourbon-950 relative">

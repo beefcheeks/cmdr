@@ -781,6 +781,88 @@ func handleRerunTask(db *sql.DB, bus *EventBus) http.HandlerFunc {
 	}
 }
 
+// --- Refresh design ---
+
+// handleRefreshDesign re-scrapes the DESIGN-*.md from a resolved refactor/new-feature
+// task's worktree. Two-phase: with commit=false it peeks (compares fresh content to
+// the stored result); with commit=true it overwrites result and publishes an update.
+func handleRefreshDesign(db *sql.DB, bus *EventBus) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			ID     int  `json:"id"`
+			Commit bool `json:"commit"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ID == 0 {
+			http.Error(w, `{"error":"missing id"}`, http.StatusBadRequest)
+			return
+		}
+
+		var intent, repoPath, worktree, startedAt, existingResult, completedAt string
+		err := db.QueryRow(
+			`SELECT COALESCE(intent, ''), repo_path, COALESCE(worktree, ''), COALESCE(started_at, ''),
+			        COALESCE(result, ''), COALESCE(completed_at, '')
+			 FROM agent_tasks WHERE id = ? AND status = 'resolved'`,
+			body.ID,
+		).Scan(&intent, &repoPath, &worktree, &startedAt, &existingResult, &completedAt)
+		if err != nil {
+			http.Error(w, `{"error":"resolved task not found"}`, http.StatusNotFound)
+			return
+		}
+		if intent != "refactor" && intent != "new-feature" {
+			http.Error(w, `{"error":"refresh only supported for refactor/new-feature"}`, http.StatusBadRequest)
+			return
+		}
+		if worktree == "" {
+			http.Error(w, `{"error":"task has no worktree"}`, http.StatusBadRequest)
+			return
+		}
+
+		content, mtime := scrapeADRFromWorktree(repoPath, worktree, startedAt)
+		w.Header().Set("Content-Type", "application/json")
+
+		if content == "" {
+			json.NewEncoder(w).Encode(map[string]any{"found": false})
+			return
+		}
+		if content == existingResult {
+			json.NewEncoder(w).Encode(map[string]any{"found": true, "changed": false})
+			return
+		}
+
+		newMtime := mtime.Format(time.RFC3339)
+		if !body.Commit {
+			json.NewEncoder(w).Encode(map[string]any{
+				"found":       true,
+				"changed":     true,
+				"newMtime":    newMtime,
+				"capturedAt":  completedAt,
+			})
+			return
+		}
+
+		title := extractTitle(content)
+		if _, err := db.Exec(`UPDATE agent_tasks SET result=?, title=?, completed_at=? WHERE id=?`,
+			content, title, newMtime, body.ID); err != nil {
+			http.Error(w, jsonErr(err), http.StatusInternalServerError)
+			return
+		}
+		bus.Publish(Event{Type: "agent:task", Data: map[string]any{
+			"id": body.ID, "status": "resolved", "title": title,
+		}})
+		json.NewEncoder(w).Encode(map[string]any{
+			"found":      true,
+			"changed":    true,
+			"committed":  true,
+			"newMtime":   newMtime,
+			"result":     content,
+		})
+	}
+}
+
 // --- Revise ---
 
 // handleReviseTask creates a revision of a completed review using inline annotations

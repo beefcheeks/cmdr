@@ -316,7 +316,7 @@ func checkRunningTasks(db *sql.DB, bus *EventBus, termSessions []terminal.Sessio
 			var existingResult string
 			db.QueryRow(`SELECT COALESCE(result, '') FROM agent_tasks WHERE id=?`, t.id).Scan(&existingResult)
 			if existingResult == "" {
-				if adr := scrapeADRFromWorktree(t.repoPath, t.worktree, t.startedAt); adr != "" {
+				if adr, _ := scrapeADRFromWorktree(t.repoPath, t.worktree, t.startedAt); adr != "" {
 					now := time.Now().Format(time.RFC3339)
 					title := extractTitle(adr)
 					db.Exec(`UPDATE agent_tasks SET status='resolved', result=?, title=?, completed_at=? WHERE id=?`,
@@ -521,11 +521,12 @@ func scrapePaneForPR(target, repoPath string) string {
 
 // scrapeADRFromWorktree finds a DESIGN-*.md file in the worktree's docs/ directory
 // that was modified after the task started. Ignores inherited files from before the task.
-func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) string {
+// Returns the file's contents and modtime, or "" and zero time if nothing qualifies.
+func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) (string, time.Time) {
 	docsDir := filepath.Join(worktreeDir(repoPath, worktreeName), "docs")
 	entries, err := os.ReadDir(docsDir)
 	if err != nil {
-		return ""
+		return "", time.Time{}
 	}
 
 	taskStart, _ := time.Parse(time.RFC3339, startedAt)
@@ -553,13 +554,13 @@ func scrapeADRFromWorktree(repoPath, worktreeName, startedAt string) string {
 		}
 	}
 	if latestName == "" {
-		return ""
+		return "", time.Time{}
 	}
 	data, err := os.ReadFile(filepath.Join(docsDir, latestName))
 	if err != nil {
-		return ""
+		return "", time.Time{}
 	}
-	return string(data)
+	return string(data), latestMod
 }
 
 // scrapeDebrief checks if a delegation debrief file exists at the path recorded
